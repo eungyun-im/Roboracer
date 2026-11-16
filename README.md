@@ -216,6 +216,17 @@ Offline analysis of the IROS 2026 line (details in [NOTES.md](NOTES.md)):
 
 The predictive version was also run with the delay, friction, measurement lag, speed noise, lateral grip and wheel gain each set wrong (10 conditions). In every one it was 0.16–0.20 s faster per lap than the current controller and spent less time at the grip limit. Try it on the race PC with `bash tools/run_tc_iros.sh`.
 
+**Raising the plan to match.** Once the controller can deliver the acceleration it is asked for, the speed profile can be planned with a higher acceleration limit. The candidates are in [`results/iros_tc_cand.json`](results/iros_tc_cand.json); "time at grip limit" is the share of the lap the sim spends above the measured cornering limit.
+
+| candidate (1-D sim) | lap | time at grip limit |
+|---|---|---|
+| current | 7.80 s | 4.65 % |
+| C1: plan accel 7.0 + predictive control, slip 0.10 | 7.56 s | 3.72 % |
+| **C2: plan accel 7.0 + predictive control, slip 0.15** | **7.44 s** | **4.39 %** |
+| C3: C2 + line re-optimized for accel 7.0 | 7.36 s | 4.92 % |
+
+The sim runs 0.09 s faster than the real car, so C2 corresponds to roughly a 75.3 s race-10 and C3 to roughly 74.5 s. For comparison, 3rd place at IROS 2026 was 73.97 s.
+
 ## 🗺️ Status and roadmap
 
 | Item | Status |
@@ -224,7 +235,7 @@ The predictive version was also run with the delay, friction, measurement lag, s
 | Unseen-track pipeline | passes offline tests on synthetic data; needs a real-simulator run (including ICRA26) |
 | Porto line candidates (est. 5.18–5.28 s vs 5.35 s) | computed offline; needs track testing (`tools/run_porto.sh`) |
 | Per-segment speed tuning (`tools/ilc_iter.sh`) | mechanics verified offline; needs practice runs |
-| Predictive traction control (`--smode 3 --spred 2`, `tools/run_tc_iros.sh`) | −0.16 to −0.20 s/lap predicted by the 1-D longitudinal model; needs track testing |
+| Predictive traction control + raised acceleration plan (`results/iros_tc_cand.json`) | −0.24 to −0.44 s/lap predicted by the 1-D longitudinal model; needs track testing (C1 → C2 → C3) |
 | LiDAR guard (`racer --guard 1`) | experimental, off by default |
 | Offline physics simulator (`tools/adsim.py`) | **not calibrated** yet; needs recorded bags to calibrate |
 

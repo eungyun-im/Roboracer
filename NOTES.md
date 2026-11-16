@@ -254,3 +254,7 @@ d. 결합: afcap2 + 헤어핀8.1 + 제동최적슬립(--smode 2 --sbrk 0.15, abr
 - tracks.json 에 plan_map/profile 필드(iros26: r025 + lin9.2/2.5/6.5/aacc6/abrk8.5/drag → 7.67 재현, porto: 5cm + alat10.5/6.5@0.8/aacc4.5/abrk7 → 5.35 재현). TRACKS_CFG env 로 다른 설정 파일 사용(시험용)
 - 리허설(race/test_new_track.py, 2.5cm 맵 가상 세계): 파이프라인 8s, est 7.77 (수동 7.67), 위치추정 출발/인계 OK. 5cm 맵을 가상 세계로 쓰면 7.84 — 5cm 맵이 벽을 안쪽으로 그려 트랙이 좁아짐(5cm≈0.2s와 일치)
 - scan_sim --start_xy: 맵 START에서 정확히 출발해 2m 동안 라인 합류(이전엔 라인 첫 점 출발이라 START와 0.3m 어긋나면 위치추정 시작 시험이 실패)
+- **계획 가속 상향**(예측형 제어가 계획을 따라가므로): combo 기하에 프로파일만 aacc/abrk 스윕 × 제어(현재/spred2 .10/.15). 6.0/8.5: 7.803/4.65%(현재) → 7.0/8.5+spred2 .10: 7.560/3.72%, **+.15: 7.441/4.39%**, 7.0/9.0+.15: 7.420/4.82%, 7.5/9.5+.15: 7.349/5.61%. 제동 계획 상향은 그립한계↑ → 8.5 유지
+  - 기하 재최적화(mintime aacc7): est 7.49, +spred2 .15 → 7.359/4.92%(약간 위험↑)
+  - 강건성 9조건: C1(.10) 8/9·C2(.15) 8/9 에서 그립한계 현재보다 낮음(예외: 실제 지연 0.22), C3 대부분 비슷하거나 약간 높음
+  - 후보: maps/iros_cand/iros26_tc_a7.csv(C1/C2), iros26_tc_a7_reopt.csv(C3), results/iros_tc_cand.json. 실측 예상(+0.09): C2 7.53s/랩(레이스10 ~75.3), C3 ~74.5. 시험: run_tc_iros.sh 11 0.15 1.0 2 maps/iros_cand/iros26_tc_a7.csv (C1→C2→C3 순)

@@ -1,0 +1,12 @@
+{
+ "note": "IROS26 가속 개선 후보(오프라인, 실주행 미검증). 예측형 트랙션 제어(smode 3, spred 2)로 실제 가속이 계획을 따라갈 수 있게 되므로 계획 가속을 6.0→7.0으로 상향. 평가: tools/long_sim.py(1D 종방향, 실측 랩 ±0.1s 재현; 실측 예상 ≈ 시뮬 + 0.09s). 그립한계 시간 = 실측 곡률별 횡그립 한계를 넘어 속도가 깎인 시간 비율(위험 지표, 현재 설정 4.65%).",
+ "racer_args_add": "--smode 3 --spred 2 --scap 1.0 --sacc <0.10|0.15>   (racer_args 의 --smode 2 대체)",
+ "candidates": [
+  {"id": "C1", "line": "maps/iros_cand/iros26_tc_a7.csv", "sacc": 0.10, "sim_lap": 7.56, "grip_limit": "3.72%", "risk": "낮음(9조건 중 8개 현재보다 낮음)"},
+  {"id": "C2", "line": "maps/iros_cand/iros26_tc_a7.csv", "sacc": 0.15, "sim_lap": 7.44, "grip_limit": "4.39%", "risk": "추천(9조건 중 8개 현재보다 낮음, 지연 0.22만 8.90 vs 7.86)"},
+  {"id": "C3", "line": "maps/iros_cand/iros26_tc_a7_reopt.csv", "sacc": 0.15, "sim_lap": 7.36, "grip_limit": "4.92%", "risk": "공격적(현재보다 약간 높음)"}
+ ],
+ "baseline": {"line": "maps/iros26_combo.csv", "ctrl": "smode 2", "sim_lap": 7.80, "real_lap": 7.89},
+ "gen": "C1/C2: profile_region.py maps/iros26_combo.csv OUT --lin_a0 9.2 --lin_slope 2.5 --lin_min 6.5 --aacc 7.0 --abrk 8.5 --drag 0.273 | C3: mintime.py maps/iros26_mt_best.csv maps/r025/iros26_map.npz --step 0.1 --wdk 0.3 --margin 0.175 --mg_vk 0.015 --mg_max 0.22 --vref_line maps/iros26_combo.csv --kmax 2.5 --lin_a0 9.2 --lin_slope 2.5 --lin_min 6.5 --aacc 7.0 --abrk 8.5 --drag 0.273 → raceline --from_line --resmooth 0 → 같은 profile",
+ "how_to_test": "bash tools/run_tc_iros.sh 11 0.15 1.0 2 maps/iros_cand/iros26_tc_a7.csv   (C1: sacc 0.10, C3: reopt 라인). 순서 C1 → C2 → C3, 각 11랩 충돌0 2회 통과 시 다음"
+}
