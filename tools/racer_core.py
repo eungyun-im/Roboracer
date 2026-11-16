@@ -53,7 +53,7 @@ class Controller:
 
 # ---------------- 지연·서보 모델 기반 선형 MPC ----------------
 # 식별(로그): 명령→조향 지연 ~0.13s, 서보 속도 ~2 rad/s, 언더스티어 K~0.005 (w = v*tanδ/(L(1+Kv²)))
-MPC_DEFAULTS=dict(merge_d=0.0,afcap=0.0,afmax=0.0,af_vmin=1.5,af_dmin=6.0,qy_hi=0.0,qy_v1=5.0,qy_v2=7.0,servo_asym=0,N=15,mdelay=0.13,srate=2.0,K=0.005,qy=8.0,qpsi=1.0,rd=0.5,rref=0.05,qterm=3.0,ay_cap=9.5,cmd_lead=0)
+MPC_DEFAULTS=dict(mdelay_hz0=0.0,mdelay_dev=0.15,merge_d=0.0,afcap=0.0,afmax=0.0,af_vmin=1.5,af_dmin=6.0,qy_hi=0.0,qy_v1=5.0,qy_v2=7.0,servo_asym=0,N=15,mdelay=0.13,srate=2.0,K=0.005,qy=8.0,qpsi=1.0,rd=0.5,rref=0.05,qterm=3.0,ay_cap=9.5,cmd_lead=0)
 class MPCController(Controller):
     def __init__(s,line_csv,**kw):
         mk={k:kw.pop(k) for k in list(kw) if k in MPC_DEFAULTS}
@@ -88,6 +88,10 @@ class MPCController(Controller):
         t=_t.time() if t is None else t; p=s.p; m=s.m
         if s.t_prev is not None: s.dt_est=0.9*s.dt_est+0.1*float(np.clip(t-s.t_prev,0.02,0.2))
         s.t_prev=t
+        if m['mdelay_hz0']>0:   # 명령 지연은 프레임 수 단위(시뮬 lockstep): 측정 주기가 기준(18Hz)에서 dev 이상 벗어날 때만 비례 조정
+            if not hasattr(s,'_md0'): s._md0=m['mdelay']
+            r=m['mdelay_hz0']*s.dt_est
+            m['mdelay']=float(np.clip(s._md0*r,0.04,0.3)) if abs(r-1)>m['mdelay_dev'] else s._md0
         if s.act_t is None: s.act_t=t
         s.act=s._servo(s.act,s.act_t,t); s.act_t=t
         s.hist=[h for h in s.hist if h[0]>t-m['mdelay']-0.5]

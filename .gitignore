@@ -6,3 +6,8 @@ log/
 sim/
 __pycache__/
 *.pyc
+
+# 실행 중 생성물
+logs/
+maps/auto/
+data/locdump.npy

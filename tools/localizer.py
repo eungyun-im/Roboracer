@@ -14,7 +14,10 @@ P='/autodrive/roboracer_1/'; RW=0.059; import os; LIDAR_X=float(os.environ.get('
 ap=argparse.ArgumentParser(); ap.add_argument('--map',required=True); ap.add_argument('--center',required=True)
 ap.add_argument('--enc_scale',type=float,default=0.97); ap.add_argument('--amax',type=float,default=4.5); ap.add_argument('--amin',type=float,default=8.0); ap.add_argument('--beams',type=int,default=4)
 ap.add_argument('--gt_check',type=int,default=0); ap.add_argument('--dump',default=''); ap.add_argument('--method',default='csm'); ap.add_argument('--win',type=float,default=0.25); ap.add_argument('--prior',type=float,default=0.5); ap.add_argument('--start_tol',type=float,default=0.02); ap.add_argument('--reinit_r',type=float,default=3.0); ap.add_argument('--reinit_dpen',type=float,default=0.01); ap.add_argument('--yaw_jump',type=float,default=0.2); ap.add_argument('--tele_r',type=float,default=2.0); ap.add_argument('--tele_dpen',type=float,default=0.05); ap.add_argument('--wide',type=float,default=0.0); ap.add_argument('--wide_step',type=float,default=0.4); ap.add_argument('--rec_time',type=float,default=3.0); ap.add_argument('--lon_w',type=float,default=0.0); ap.add_argument('--slip_kp',type=float,default=0.0); ap.add_argument('--slip_kn',type=float,default=0.0); ap.add_argument('--ax_tau',type=float,default=0.3); ap.add_argument('--scan_lat',type=float,default=0.0); ap.add_argument('--vobs',type=int,default=0); ap.add_argument('--r_eff',type=float,default=0.0581); ap.add_argument('--k_mu',type=float,default=1.1); ap.add_argument('--lon_lat',type=float,default=0.019); ap.add_argument('--lon_vmin',type=float,default=4.0); ap.add_argument('--lon_wzmax',type=float,default=0.5); ap.add_argument('--lon_ref',type=float,default=0.0); ap.add_argument('--lon_cos',type=float,default=0.7); ap.add_argument('--lon_min',type=int,default=12); ap.add_argument('--lon_win',type=float,default=0.4)  # 정면벽 1D 종방향 정밀정합(보정 이득)  # 가감속 슬립 보정(IMU ax)  # 진행방향 정보 점 가중(퇴화 인지)   # 1이면 GT와 오차 출력(디버깅 전용, 제어엔 미사용)
+ap.add_argument('--comp',type=int,default=0)   # 1=대회 모드: GT 확인(--gt_check) 금지
+ap.add_argument('--init_wait',type=float,default=0.0)   # >0: /racer/init_pose(미지 트랙 매핑→주행 인계 pose)를 최대 이 시간[s] 기다려 초기화
 a=ap.parse_args()
+if a.comp and a.gt_check: raise SystemExit('대회 모드(--comp 1)에서는 --gt_check 사용 불가(GT 토픽 금지)')
 z=np.load(a.map); occ=z['occ']; ox,oy=z['origin']; RES=float(z['res']); START=z['start'] if 'start' in z.files else None
 iy,ix=np.nonzero(occ); MP=np.c_[ox+(ix+0.5)*RES, oy+(iy+0.5)*RES]; T=cKDTree(MP)
 C=np.loadtxt(a.center,delimiter=',')[:,:2]
@@ -75,10 +78,13 @@ class Loc(Node):
         s.create_subscription(LaserScan,P+'lidar',s.cb_scan,10)
         s.pp=s.create_publisher(PoseStamped,'/racer/pose',1); s.po=s.create_publisher(Odometry,'/racer/odom',1)
         s.prec=s.create_publisher(Bool,'/racer/recovering',1); s.rec_until=0.0   # 충돌복귀 후 복구중 신호
-        s.el=s.er=None; s.ang=None
+        s.el=s.er=None; s.ang=None; s.t_start=time.time()
+        if a.init_wait>0: s.create_subscription(PoseStamped,'/racer/init_pose',s.cb_init,1)
         if a.gt_check:
             s.create_subscription(Odometry,P+'odom',lambda m:setattr(s,'gt',m),1)
             s.create_subscription(Int32,P+'collision_count',lambda m:setattr(s,'gcoll',m.data),1)
+    def cb_init(s,m):
+        if s.x is None: s._init=(m.pose.position.x,m.pose.position.y)
     def cb_imu(s,m):
         s.yaw=yawq(m.orientation); s.wz=m.angular_velocity.z
         al=min(1.0,0.055/max(a.ax_tau,1e-3)); s.axf=getattr(s,'axf',0.0)*(1-al)+al*m.linear_acceleration.x
@@ -149,6 +155,10 @@ class Loc(Node):
                 s.need_reinit=True; s.teleport=True; s.v=0.0; v=0.0; s.rec_until=t+a.rec_time
                 if hasattr(s,'obs'): s.obs.v=0.0; s.obs.init=True
         s._pyaw=yaw; s._pt=t
+        if s.x is None and a.init_wait>0 and time.time()-s.t_start<a.init_wait and not hasattr(s,'_init'):
+            return   # 인계 pose 대기 중(엔코더 상태는 위 speed()에서 갱신)
+        if s.x is None and hasattr(s,'_init'):
+            s.x,s.y=map(float,s._init); s.t=t; s.start_used=True; print(f'[loc] init from handover pose ({s.x:.2f},{s.y:.2f})',flush=True)
         if s.x is None:
             if START is not None and not getattr(s,'start_used',False) and np.hypot(*(np.array([0,0]))) == 0:
                 s.x,s.y=float(START[0]),float(START[1]); s.start_used=True   # 알려진 출발 pose

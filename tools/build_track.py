@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
-"""기록 npz(GT pose+LiDAR) -> 점유격자 맵 + 중심선/트랙폭 CSV.
-usage: build_track.py <rec.npz> <out_prefix>   (출력: <prefix>_map.npz, <prefix>_center.csv, <prefix>_track.png)"""
+"""기록 npz -> 점유격자 맵 + 중심선/트랙폭 CSV.
+입력: ftg_record.py 기록(GT pose, 연습용) 또는 slam_lite/explore.py 기록(GT 없음, lap_end 포함 → 궤적 기반 중심선)
+usage: build_track.py <rec.npz> <out_prefix>   (출력: <prefix>_map.npz, <prefix>_center.csv, <prefix>_track.png)
+env: MAP_RES(기본 0.05), CORRIDOR(SLAM 기록 시 궤적 주변 통로 반폭, 기본 2.0m)"""
 import sys, numpy as np
 from scipy import ndimage
 from skimage.morphology import skeletonize
@@ -8,8 +10,38 @@ import matplotlib; matplotlib.use('Agg'); import matplotlib.pyplot as plt
 import os
 RES=float(os.environ.get('MAP_RES','0.05')); LIDAR_X=float(os.environ.get('LIDAR_X','0.2733')); _SC=0.05/RES   # 격자 축소 시 같은 물리 크기 유지
 
-def finish(occ,free,ox,oy,RES,sx,sy,syaw,pre,start=None):
+def traj_center(free,ox,oy,RES,traj,syaw,iters=6):
+    """주행 궤적(한 바퀴)을 초기값으로 법선 방향 양쪽 벽 중간으로 반복 이동 → 중심선.
+    스켈레톤과 달리 열린 벽/갈래/섬이 있어도 실제 주행 루프를 따름."""
+    from scipy.interpolate import splprep, splev
+    H,W=free.shape
+    xy=np.asarray(traj,float); keep=np.r_[True,np.linalg.norm(np.diff(xy,axis=0),axis=1)>0.02]; xy=xy[keep]
+    def resample(p,sm):
+        q=np.vstack([p,p[:1]]); tck,_=splprep([q[:,0],q[:,1]],s=len(q)*sm,per=1)
+        L=np.sum(np.linalg.norm(np.diff(np.array(splev(np.linspace(0,1,3000),tck)).T,axis=0),axis=1))
+        return np.array(splev(np.linspace(0,1,int(L/0.1),endpoint=False),tck)).T
+    def cast(p,dv):
+        ss=np.arange(0,3.0,RES/2); Q=p[None,:]+dv[None,:]*ss[:,None]
+        jx=((Q[:,0]-ox)/RES).astype(int); jy=((Q[:,1]-oy)/RES).astype(int)
+        bad=(jx<0)|(jy<0)|(jx>=W)|(jy>=H); bad[~bad]=~free[jy[~bad],jx[~bad]]
+        k=np.argmax(bad); return ss[k] if bad.any() else 3.0
+    c=resample(xy,0.002)
+    for it in range(iters):
+        t=np.gradient(c,axis=0); t/=np.linalg.norm(t,axis=1)[:,None]; nrm=np.c_[-t[:,1],t[:,0]]
+        wl=np.array([cast(c[i],nrm[i]) for i in range(len(c))]); wr=np.array([cast(c[i],-nrm[i]) for i in range(len(c))])
+        from scipy.ndimage import uniform_filter1d, median_filter
+        sh=median_filter(np.clip((wl-wr)/2,-0.3,0.3),9,mode='wrap')   # 레이 노이즈(벽 틈/급커브 법선 교차) 제거
+        sh=0.7*uniform_filter1d(sh,9,mode='wrap'); c=resample(c+nrm*sh[:,None],0.002)   # 감쇠 이동 + 평활(지그재그 발산 방지)
+    v0=c[min(5,len(c)-1)]-c[0]
+    if np.dot(v0,[np.cos(syaw),np.sin(syaw)])<0: c=c[::-1]
+    return c
+
+def finish(occ,free,ox,oy,RES,sx,sy,syaw,pre,start=None,traj=None):
     H,W=occ.shape
+    if traj is not None:
+        c=traj_center(free,ox,oy,RES,traj,syaw); N=len(c)
+        L=float(np.sum(np.linalg.norm(np.diff(np.vstack([c,c[:1]]),axis=0),axis=1)))
+        return widths_out(c,N,L,occ,free,ox,oy,RES,pre,start)
     edt=ndimage.distance_transform_edt(free)*RES
     sk=skeletonize(free)
     # prune spurs
@@ -37,6 +69,10 @@ def finish(occ,free,ox,oy,RES,sx,sy,syaw,pre,start=None):
     tck,u=splprep([xy[:,0],xy[:,1]],s=len(xy)*0.0004,per=1)
     L=np.sum(np.linalg.norm(np.diff(np.array(splev(np.linspace(0,1,2000),tck)).T,axis=0),axis=1))
     N=int(L/0.1); c=np.array(splev(np.linspace(0,1,N,endpoint=False),tck)).T
+    return widths_out(c,N,L,occ,free,ox,oy,RES,pre,start)
+
+def widths_out(c,N,L,occ,free,ox,oy,RES,pre,start):
+    H,W=occ.shape
     cix=np.clip(((c[:,0]-ox)/RES).astype(int),0,W-1); ciy=np.clip(((c[:,1]-oy)/RES).astype(int),0,H-1)
     # widths: ray-cast along normals on free mask
     t=np.gradient(c,axis=0); t/=np.linalg.norm(t,axis=1)[:,None]; nrm=np.c_[-t[:,1],t[:,0]]
@@ -76,7 +112,13 @@ if __name__=='__main__':
     occ_d=ndimage.binary_dilation(occ,iterations=int(round(_SC)))
     lab,_=ndimage.label(~occ_d)
     sx,sy=int((d['x'][0]-ox)/RES),int((d['y'][0]-oy)/RES)
+    traj=None
+    if 'lap_end' in d.files:   # SLAM 기록(GT 없음): 한 바퀴 궤적 주변 통로로 자유공간 제한(열린 벽/트랙 밖 누출 방지) + 궤적 기반 중심선
+        le=int(d['lap_end']); traj=np.c_[d['x'][:le],d['y'][:le]]
+        CORR=float(os.environ.get('CORRIDOR','2.0'))
+        tm=np.ones((H,W),bool); tix=((traj[:,0]-ox)/RES).astype(int); tiy=((traj[:,1]-oy)/RES).astype(int); tm[tiy,tix]=False
+        near=ndimage.distance_transform_edt(tm)*RES<CORR
+        lab,_=ndimage.label(~occ_d&near)
     free=lab==lab[sy,sx]
     assert not (free[0].any() or free[-1].any() or free[:,0].any() or free[:,-1].any()), 'free space leaked to border'
-    free=ndimage.binary_fill_holes(free)&~occ_d if False else free
-    finish(occ,free,ox,oy,RES,sx,sy,d['yaw'][0],pre,start=[d['x'][0],d['y'][0],d['yaw'][0]])
+    finish(occ,free,ox,oy,RES,sx,sy,d['yaw'][0],pre,start=[d['x'][0],d['y'][0],d['yaw'][0]],traj=traj)
