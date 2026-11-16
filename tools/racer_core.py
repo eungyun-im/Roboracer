@@ -196,3 +196,48 @@ class MPCController(Controller):
             vref=float(np.clip(vref+p['sk']*(vref-vl),vl-band,vl+band)); vref=max(vref,0.05)
         s._cmd=vref
         return delta,vref,err
+
+# ---------------- LiDAR 직접 안전층(Guard) ----------------
+# 맵·위치추정과 무관하게 최신 LiDAR 점(차체 좌표)으로 앞으로 horizon[s] 동안의 차체 궤적을 예측해
+# 벽과 겹칠 것 같으면 조향을 최소한으로 비틀고(후보 오프셋), 그래도 안 되면 감속.
+# 예측: 지연(delay) 동안은 이미 보낸 조향, 이후는 후보 조향으로 운동학 자전거 모델(언더스티어 K) 적분.
+# 실험적(기본 꺼짐): 오프라인 미보정 시뮬에서 충돌 감소 효과 불확실 — 실주행에서 개입률/충돌로 판단할 것
+GUARD_DEFAULTS=dict(g_h=0.45,g_dt=0.05,g_delay=0.13,g_front=0.32,g_rear=-0.05,g_hw=0.125,g_cmin=0.01,
+                    g_offs=0.10,g_nofs=4,g_brake=1.5,g_rmax=4.0,g_K=0.005)
+class Guard:
+    def __init__(s,**kw):
+        s.p=dict(GUARD_DEFAULTS); s.p.update({k:v for k,v in kw.items() if v is not None and k in GUARD_DEFAULTS})
+        s.pts=None; s.t_scan=None; s.last_delta=0.0; s.n_act=0; s.n_calls=0
+        n=int(s.p['g_nofs']); o=np.linspace(0,s.p['g_offs'],n+1)[1:]
+        s.cands=np.r_[0.0,np.ravel(np.c_[o,-o])]   # 0, +o1, -o1, +o2, -o2 ...
+    def set_scan(s,pts_body,t):
+        r=np.hypot(pts_body[:,0],pts_body[:,1]); s.pts=pts_body[r<s.p['g_rmax']]; s.t_scan=t
+    def clearance(s,v,d_now,d_new,shift=0.0):
+        """후보 조향 배열 d_new(n,)별 예측 궤적 동안 차체 사각형-점 최소거리 (n,)"""
+        p=s.p; P=s.pts.copy(); P[:,0]-=shift   # 스캔 이후 이동분 보정(직진 근사)
+        n=len(d_new); x=np.zeros(n); y=np.zeros(n); th=np.zeros(n); cmin=np.full(n,9.0)
+        Lg=L*(1+p['g_K']*v*v); tt=0.0; h=p['g_dt']
+        while tt<p['g_h']-1e-9:
+            d=np.full(n,d_now) if tt<p['g_delay'] else d_new
+            w=v*np.tan(d)/Lg; x=x+v*h*np.cos(th+w*h/2); y=y+v*h*np.sin(th+w*h/2); th=th+w*h; tt+=h
+            c,sn=np.cos(th),np.sin(th)
+            dx=P[None,:,0]-x[:,None]; dy=P[None,:,1]-y[:,None]
+            bx=c[:,None]*dx+sn[:,None]*dy; by=-sn[:,None]*dx+c[:,None]*dy
+            ex=np.maximum(np.maximum(p['g_rear']-bx,bx-p['g_front']),0.0); ey=np.maximum(np.abs(by)-p['g_hw'],0.0)
+            cmin=np.minimum(cmin,np.hypot(ex,ey).min(1))
+        return cmin
+    def filter(s,v,delta,vref,t=None):
+        """반환 (delta, vref, 개입여부). 스캔 없거나 저속이면 그대로."""
+        s.n_calls+=1
+        if s.pts is None or len(s.pts)==0 or v<1.0: s.last_delta=delta; return delta,vref,False
+        shift=v*max(0.0,min((t-s.t_scan) if (t is not None and s.t_scan is not None) else 0.0,0.2))
+        cand=np.clip(delta+s.cands,-MAXSTEER,MAXSTEER)
+        cl=s.clearance(v,s.last_delta,cand,shift)
+        act=False
+        if cl[0]<s.p['g_cmin']:
+            ok=np.where(cl>=s.p['g_cmin'])[0]
+            if len(ok): delta=float(cand[ok[0]])          # 가장 작은 비틀기
+            else: delta=float(cand[int(np.argmax(cl))]); vref=min(vref,max(v-s.p['g_brake'],0.5))   # 피할 수 없으면 감속까지
+            act=True; s.n_act+=1
+        s.last_delta=delta
+        return delta,vref,act

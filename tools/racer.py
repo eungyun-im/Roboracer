@@ -6,7 +6,7 @@ from rclpy.node import Node
 from std_msgs.msg import Float32, Int32, Bool
 from nav_msgs.msg import Odometry
 from geometry_msgs.msg import PoseStamped
-import os; sys.path.insert(0,os.path.dirname(os.path.abspath(__file__))); from racer_core import Controller, MPCController, MPC_DEFAULTS
+import os; sys.path.insert(0,os.path.dirname(os.path.abspath(__file__))); from racer_core import Controller, MPCController, MPC_DEFAULTS, Guard, GUARD_DEFAULTS
 P='/autodrive/roboracer_1/'; L=0.324; MAXSTEER=0.5236
 ap=argparse.ArgumentParser()
 ap.add_argument('--line',required=True); ap.add_argument('--pose',default='gt')
@@ -18,6 +18,8 @@ ap.add_argument('--timeout',type=float,default=240); ap.add_argument('--out',def
 ap.add_argument('--reset',type=int,default=1); ap.add_argument('--log',default=''); ap.add_argument('--vlead',type=float,default=0.25); ap.add_argument('--steer_ay',type=float,default=7.5); ap.add_argument('--steer_slip',type=float,default=3.0); ap.add_argument('--gov_e0',type=float,default=0.0); ap.add_argument('--rate_table',default='')
 ap.add_argument('--ctrl',default='pp'); ap.add_argument('--vsrc',default='');  # 'gt' = 진단 전용(위치추정 모드에서 속도만 GT)
 ap.add_argument('--vff',type=float,default=0.0); ap.add_argument('--aff',type=float,default=0.0); ap.add_argument('--aff_neg',type=float,default=1.0); ap.add_argument('--vm_kp',type=float,default=0.0); ap.add_argument('--vm_blend',type=float,default=0.1); ap.add_argument('--steer_abs',type=float,default=0.0); ap.add_argument('--aff_lead',type=float,default=-1.0); ap.add_argument('--rec_vmax',type=float,default=0.0); ap.add_argument('--aff_kmax',type=float,default=0.0); ap.add_argument('--arm_on_reset',type=int,default=0); ap.add_argument('--cmode',type=float,default=0); ap.add_argument('--ck',type=float,default=0.3); ap.add_argument('--cdv',type=float,default=0.3); ap.add_argument('--smode',type=float,default=0); ap.add_argument('--sband',type=float,default=0.10); ap.add_argument('--stau',type=float,default=0.15); ap.add_argument('--sk',type=float,default=0.76); ap.add_argument('--sbrk',type=float,default=0.15); ap.add_argument('--sdb',type=float,default=0.3)  # 테스트 전용: 리셋 명령(True->False) 감지 후 출발
+ap.add_argument('--guard',type=int,default=0)   # 1=LiDAR 직접 안전층(실험적, 기본 꺼짐): 예측 차체가 벽과 겹치면 조향 최소 보정/감속
+for k in GUARD_DEFAULTS: ap.add_argument('--'+k,type=float,default=None)
 ap.add_argument('--reload',type=int,default=0)   # 1=라인 파일 변경(mtime) 감지 시 제어기 재생성(미지 트랙 2단계 라인 교체)
 ap.add_argument('--comp',type=int,default=0)   # 1=대회 모드: 금지(Restricted) 토픽 구독/리셋 발행 없음, 위치추정 pose만, 랩 종료/타임아웃 없음
 for k in ('mdelay_hz0','mdelay_dev','merge_d','afcap','afmax','af_vmin','af_dmin','qy_hi','qy_v1','qy_v2','servo_asym','N','mdelay','srate','K','qy','qpsi','rd','rref','qterm','ay_cap','cmd_lead'): ap.add_argument('--'+k,type=float,default=None)
@@ -39,6 +41,10 @@ class R(Node):
         else:
             s.create_subscription(PoseStamped,'/racer/pose',s.cb_pose,1)
             s.create_subscription(Odometry,P+'odom' if a.vsrc=='gt' else '/racer/odom',s.cb_odom,1)
+        s.G=None
+        if a.guard:   # LiDAR(허용 토픽) 직접 사용
+            from sensor_msgs.msg import LaserScan
+            s.G=Guard(**{k:getattr(a,k) for k in GUARD_DEFAULTS}); s.create_subscription(LaserScan,P+'lidar',s.cb_scan,1)
         s.recovering=False
         if a.rec_vmax>0: s.create_subscription(Bool,'/racer/recovering',lambda m:setattr(s,'recovering',m.data),1)
         if a.comp:
@@ -76,6 +82,10 @@ class R(Node):
         if a.out: open(a.out,'a').write(json.dumps(res)+'\n')
         if a.log and hasattr(s,'L'): np.save(a.log,np.array(s.L))
         raise SystemExit
+    def cb_scan(s,m):
+        r=np.asarray(m.ranges,float); k=np.arange(0,len(r),4); rr=r[k]; ok=np.isfinite(rr)&(rr>0.06)&(rr<9.5)
+        ang=m.angle_min+k[ok]*m.angle_increment
+        s.G.set_scan(np.c_[0.2733+rr[ok]*np.cos(ang),rr[ok]*np.sin(ang)],time.time())
     def cb_pose(s,m):
         q=m.pose.orientation; s.pose=(m.pose.position.x,m.pose.position.y,np.arctan2(2*(q.w*q.z+q.x*q.y),1-2*(q.y*q.y+q.z*q.z))); s.last_pose_t=time.time(); s.control()
     def cb_odom(s,m):
@@ -110,6 +120,9 @@ class R(Node):
         # 지연 보상: 현재 속도/요레이트로 lat초 앞 위치 예측
         delta,vref,e=s.C.step(x,y,th,v,wz); s.idx=s.C.idx; s.err.append(e)
         if a.rec_vmax>0 and s.recovering: vref=min(vref,a.rec_vmax)   # 충돌복귀 직후 속도 제한(연쇄충돌 방지)
+        if s.G is not None:
+            delta,vref,gact=s.G.filter(v,delta,vref,time.time())
+            if s.G.n_calls%180==0: print(f'[guard] intervention rate {s.G.n_act/max(s.G.n_calls,1):.3f}',flush=True)
         s.pt.publish(Float32(data=float(np.clip(vref*a.kthr,0,1)))); s.ps.publish(Float32(data=float(np.clip(delta/MAXSTEER,-1,1))))
         if a.comp: s.pact.publish(Bool(data=True))
         if a.log: s.__dict__.setdefault('L',[]).append((time.time()-s.t0,s.pose[0],s.pose[1],s.pose[2],v,getattr(s,'vy',0.0),wz,delta,vref,s.idx,s.err[-1],s.coll))

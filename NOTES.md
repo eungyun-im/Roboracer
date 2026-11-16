@@ -221,3 +221,10 @@ d. 결합: afcap2 + 헤어핀8.1 + 제동최적슬립(--smode 2 --sbrk 0.15, abr
    - 자동 라인 예상: IROS26 7.87(여유 그대로)/7.96(여유+0.025, 기본) vs 수동 7.67 — SLAM 맵 벽이 약간 두꺼워 트랙이 좁게 잡힘. Porto 5.39~5.40
 3. Porto 후보(results/porto_cand.json, maps/porto_cand/): 기존 절차 재현 5.35 확인 후 여유 축소+속도연동. 0.25/출발구간0.40 → 5.28, 0.20/0.40 → 5.25, 0.175/없음 → 5.18 (기존 5.35, 실측은 est+~0.3). practice 빌드라 기존 그립 모델 유지
 4. 실주행으로 확인할 것(우선순위): ① race/run_local.sh auto 로 Porto·IROS 판별/주행(레이스10 기존과 같은지, audit_topics.sh OK) ② TRACK=explore 로 IROS에서 매핑→인계→stage B 교체(인계 순간 충돌 여부, 매핑 랩 시간) ③ ICRA26에서 explore ④ tools/run_porto.sh 로 Porto 후보 3종 ⑤ docker build/실행
+
+## 2026-11-16 (계속) 제어 개선 시도 — 오프라인(시뮬 없음)
+- 경량 시뮬 gymsim에 MPC/가상 LiDAR/안전층/로그 추가 → 하지만 gymsim(f1tenth 모델, 옛 Porto PP 보정)은 MPC에서 실제와 불일치(Porto mt_best: 실제 5.66s 0충돌 vs gym 7.2s 7충돌) → 제어 평가에 못 씀
+- tools/adsim.py 작성: ① 물리 모델(Unity 곡선+동적 자전거): 너무 민첩(언더스티어 0, 요 지연 ~0.01s) → 앞/뒤 슬립각 스케일 6/3으로 K 0.005 맞췄으나 헤어핀 출구 과회전 충돌 ② 현상 모델(실측 지연·서보·K·요지연 + 곡률별 그립 + 종슬립 마찰): 추종 ±7cm(실측 p99 6.6cm와 비슷)지만 combo 설정이 랩당 1~3충돌(실제 0) → **미보정**. 충돌 박스/헤어핀 출구 동역학이 원인 추정. 보정엔 GT odom+명령이 있는 bag(data/bag_iros_*.npz) 필요
+- 안전층(racer --guard 1, racer_core.Guard): 예측 지평 0.45s(지연 동안은 직전 조향) 동안 차체 사각형-LiDAR점 거리 < g_cmin 이면 조향 오프셋 후보 중 최소 비틀기, 없으면 감속. adsim 비교에서 충돌 16·15 → 11~17(효과 불분명) → 기본 꺼짐, 실주행에서 개입률·충돌로 판단할 것
+- ILC(tools/ilc_profile.py, ilc_iter.sh): 2m 구간별 횡그립 배율 f(×f²), 충돌 구간(0.3s 앞 pose로 귀속) -0.03, 벽여유<2cm -0.01, 여유>6cm·이탈p95<6cm +0.015, [0.85,1.12], 이웃 평활. adsim에서 6회 반복 충돌 15→5(동작 확인용, 수치 의미 없음)
+- PC 확인 순서: ① bash tools/ilc_iter.sh 4 (11랩×4, 반복마다 maps/ilc/iros_itN.csv) → 충돌0 유지하며 랩 단축되는지 ② racer --guard 1 로 run_combo_iros (개입률 로그 '[guard]', 충돌 변화) ③ data/bag_*.npz 를 레포에 올리면 adsim 보정 가능

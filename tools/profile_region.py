@@ -2,7 +2,7 @@
 """구간별 속도 배율 프로파일: 라인 기하(x,y,κ)는 유지, 지정 s 구간의 횡가속 한계만 f² 배.
 usage: profile_region.py <line.csv> <out.csv> --regions s0:s1:f[,..] [--alat 9.48 --alat_t 5.87 --k_t 0.8 --alat_c 4.51 --k_c 0.884 --aacc 4.5 --abrk 7]"""
 import argparse, numpy as np
-ap=argparse.ArgumentParser(); ap.add_argument('line'); ap.add_argument('out'); ap.add_argument('--regions',default='')
+ap=argparse.ArgumentParser(); ap.add_argument('line'); ap.add_argument('out'); ap.add_argument('--regions',default=''); ap.add_argument('--factors',default='')   # csv(s,f): 구간 학습(ilc_profile.py) 배율, 횡그립 ×f²
 for k,v in dict(lin_a0=0.0,lin_k0=0.6,lin_slope=4.0,lin_min=6.5,alat=9.48,alat_t=5.87,k_t=0.8,alat_c=4.51,k_c=0.884,aacc=4.5,abrk=7.0,vmax=15.0,drag=0.0).items(): ap.add_argument('--'+k,type=float,default=v)
 a=ap.parse_args()
 D=np.loadtxt(a.line,delimiter=','); S,k=D[:,0],D[:,4]; M=len(S); ds=S[1]-S[0]; ak=np.abs(k)
@@ -12,6 +12,9 @@ else:
     al=np.full(M,a.alat); al=np.where(ak>a.k_t,np.minimum(al,a.alat_t),al); al=np.where(ak>a.k_c,np.minimum(al,a.alat_c),al)
 for r in filter(None,a.regions.split(',')):
     s0,s1,f=map(float,r.split(':')); m=(S>=s0)&(S<=s1); al[m]*=f*f
+if a.factors:
+    F=np.loadtxt(a.factors,delimiter=','); F=F.reshape(-1,2); Ltot=S[-1]+ds
+    al*=np.interp(S,F[:,0],F[:,1],period=Ltot)**2
 v=np.minimum(np.sqrt(al/np.maximum(ak,1e-4)),a.vmax)
 for _ in range(3):
     for i in range(1,2*M):

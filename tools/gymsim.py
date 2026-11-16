@@ -5,7 +5,7 @@ usage(모듈): run(map_npz, center_csv, line_csv, laps, ctrl_params, veh_params,
 import sys, types, importlib.util, os, numpy as np
 from scipy import ndimage
 HERE=os.path.dirname(os.path.abspath(__file__)); sys.path.insert(0,HERE)
-from racer_core import Controller
+from racer_core import Controller, MPCController, Guard
 # numba 스텁(사용자 site의 numba가 coverage 버전 문제로 import 실패) -> 순수 파이썬으로 실행
 try:
     import numba  # noqa
@@ -33,10 +33,17 @@ def collide(T,x,y,th,S):
     H,Wd=T['DF'].shape
     if (ix<0).any() or (iy<0).any() or (ix>=Wd).any() or (iy>=H).any(): return True
     return bool((T['DF'][iy,ix]<T['R']*0.75).any())
-def run(map_npz,center_csv,line_csv,laps=5,ctrl=None,veh=None,sim=None,start=None,track=None,verbose=False):
+def run(map_npz,center_csv,line_csv,laps=5,ctrl=None,veh=None,sim=None,start=None,track=None,verbose=False,guard=None,log=False):
+    """ctrl: Controller 인자(+ 'ctrl':'mpc' 이면 MPCController, 시뮬 시간으로 step). guard: Guard 인자 dict(가상 LiDAR로 안전층 적용).
+    log=True: 제어 주기별 (t,x,y,th,v,delta,vref,err,line_idx) 와 충돌 위치 반환"""
     V=dict(VEH); V.update(veh or {}); S=dict(SIM); S.update(sim or {}); rng=np.random.default_rng(S['seed'])
     T=track or load_track(map_npz,center_csv); C=T['C']; NC=len(C)
-    K=Controller(line_csv,**(ctrl or {}))
+    ck=dict(ctrl or {}); mpc=ck.pop('ctrl','pp')=='mpc'
+    K=MPCController(line_csv,**ck) if mpc else Controller(line_csv,**ck)
+    G=Guard(**guard) if guard is not None else None; LOG=[]; CEV=[]
+    if G is not None:
+        from scan_sim import raycast, AMIN, AINC, LIDAR_X
+        DFs=T['DF']-T['R']/2; kb=np.arange(0,1080,4); angb=AMIN+kb*AINC
     P=[V[k] for k in KEYS]
     if start is None:
         t0=C[1]-C[0]; start=(C[0,0],C[0,1],np.arctan2(t0[1],t0[0]))
@@ -52,7 +59,13 @@ def run(map_npz,center_csv,line_csv,laps=5,ctrl=None,veh=None,sim=None,start=Non
             vx=v*np.cos(beta)
             ea=rng.normal(0,S['noise_along']); ec=rng.normal(0,S['noise_cross'])
             xo=x+ea*np.cos(th)-ec*np.sin(th); yo=y+ea*np.sin(th)+ec*np.cos(th)
-            delta,vref,e=K.step(xo,yo,th,vx*(1+rng.normal(0,S['v_noise'])),wz); maxerr.append(e)
+            vm=vx*(1+rng.normal(0,S['v_noise']))
+            delta,vref,e=K.step(xo,yo,th,vm,wz,t=t) if mpc else K.step(xo,yo,th,vm,wz); maxerr.append(e)
+            if G is not None:   # 가상 LiDAR(참 pose 기준) → 안전층
+                r=raycast(DFs,T['ox'],T['oy'],T['R'],x,y,th)[kb]; ok=np.isfinite(r)&(r<9.5)
+                G.set_scan(np.c_[LIDAR_X+r[ok]*np.cos(angb[ok]),r[ok]*np.sin(angb[ok])],t)
+                delta,vref,_=G.filter(vm,delta,vref,t)
+            if log: LOG.append((t,x,y,th,v,delta,vref,e,K.idx))
             queue.append((t+S['delay'],delta,vref))
         while queue and queue[0][0]<=t+1e-9: _,d_,v_=queue.pop(0); cmd=(d_,v_)
         dcmd=cmd[0]
@@ -75,10 +88,13 @@ def run(map_npz,center_csv,line_csv,laps=5,ctrl=None,veh=None,sim=None,start=Non
         prog_idx=ni
         if step%5==0:
             if collide(T,st[0],st[1],st[4],S):
-                coll+=1; j=(prog_idx-10)%NC; tg=C[(j+1)%NC]-C[j]
+                CEV.append((t,st[0],st[1],K.idx if K.idx is not None else -1)); coll+=1; j=(prog_idx-10)%NC; tg=C[(j+1)%NC]-C[j]
                 st=np.array([C[j,0],C[j,1],0.0,0.0,np.arctan2(tg[1],tg[0]),0.0,0.0]); prog_idx=j; K.reset(); queue=[]; cmd=(0.0,0.0)
                 if coll>30: break
-    return dict(laps=laps_t,coll=coll,total=float(sum(laps_t)),done=len(laps_t)>=laps,maxerr=float(np.max(maxerr)) if maxerr else 0)
+    r=dict(laps=laps_t,coll=coll,total=float(sum(laps_t)),done=len(laps_t)>=laps,maxerr=float(np.max(maxerr)) if maxerr else 0)
+    if G is not None: r['guard_act']=G.n_act/max(G.n_calls,1)
+    if log: r['log']=np.array(LOG); r['coll_ev']=np.array(CEV).reshape(-1,4)
+    return r
 if __name__=='__main__':
     import argparse, json
     ap=argparse.ArgumentParser(); ap.add_argument('--map',default='maps/porto_map.npz'); ap.add_argument('--center',default='maps/porto_center.csv')

@@ -45,6 +45,9 @@ bash race/audit_topics.sh                                       # (실행 중 �
 | tools/slam_lite.py, explore.py | GT 없는 매핑: IMU yaw + 엔코더 + LiDAR 스캔-맵 정합, 루프 폐합 / 탐색 주행 노드 |
 | tools/auto_track.py | 매핑 기록 → 맵(5cm·2.5cm) → 중심선 → 최소곡률/최소시간 라인 → 프로파일 (IROS26 수동 절차 자동화) |
 | tools/scan_sim.py | 오프라인 시험용 가상 LiDAR/엔코더(맵 레이캐스팅) |
+| tools/ilc_profile.py, ilc_iter.sh | 구간별 학습형 속도 보정(ILC): 연습 주행 로그로 구간 배율 자동 조정 → 새 라인. `bash tools/ilc_iter.sh 4` |
+| tools/adsim.py | AutoDRIVE 물리 재현 오프라인 시뮬 — **미보정**(실제보다 충돌 많음), 로직 동작 확인용. bag으로 보정 필요 |
+| racer --guard 1 | LiDAR 직접 안전층(실험적, 기본 꺼짐): 예측 차체가 벽과 겹치면 조향 최소 보정/감속. 로그에 개입률 출력 |
 | race/ | 제출 패키지: Dockerfile, 엔트리포인트, race_launch.py, tracks.json, 시험/감사 스크립트 |
 | tools/run_race_test.sh | 대회형 테스트(노드 선기동→리셋 즉시 출발), LOC_ARGS/ENC_SCALE/MAP/CENTER env |
 | tools/loc_offline.py, bag2npz.py, true_dev.py, sweep2_analyze.py ... | 오프라인 분석 도구 |
