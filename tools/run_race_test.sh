@@ -2,7 +2,7 @@
 # 대회형 출발 테스트: 위치추정+주행 노드를 먼저 띄워 대기 -> 리셋 순간 출발 (랩타이머=리셋부터)
 # usage: run_race_test.sh <line.csv> <laps> [racer args...]   (MAP/CENTER env)
 cd "$(dirname "$(readlink -f "$0")")/.." && source env.sh
-LINE=$1; LAPS=$2; shift 2
+LINE=$1; LAPS=$2; shift 2; mkdir -p data logs
 python3 tools/localizer.py --map ${MAP:-maps/porto_map.npz} --center ${CENTER:-maps/porto_center.csv} --enc_scale ${ENC_SCALE:-0.97} ${LOC_ARGS} --gt_check 1 --dump data/locdump.npy > logs/loc.log 2>&1 &
 LP=$!
 python3 tools/racer.py --line $LINE --pose loc --reset 0 --arm_on_reset 1 --laps $LAPS "$@" > logs/racer_run.log 2>&1 &

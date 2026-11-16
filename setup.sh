@@ -10,6 +10,7 @@ MISSING=""
 python3 -c "import venv, ensurepip" 2>/dev/null || MISSING="$MISSING python3-venv"
 python3 -c "import Xlib" 2>/dev/null || MISSING="$MISSING python3-xlib"
 python3 -c "import scipy, matplotlib, PIL" 2>/dev/null || MISSING="$MISSING python3-scipy python3-matplotlib python3-pil"
+python3 -c "import skimage" 2>/dev/null || MISSING="$MISSING python3-skimage"   # build_track.py
 dpkg -s ros-humble-cv-bridge >/dev/null 2>&1 || MISSING="$MISSING ros-humble-cv-bridge"
 dpkg -s ros-humble-tf-transformations >/dev/null 2>&1 || MISSING="$MISSING ros-humble-tf-transformations"
 command -v xdotool >/dev/null || MISSING="$MISSING xdotool"

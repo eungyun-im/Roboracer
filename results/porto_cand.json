@@ -1,0 +1,12 @@
+{
+ "note": "Porto 재최적화 후보(오프라인 계산, 실주행 미검증). IROS26에서 효과가 컸던 '벽 여유 축소 + 속도연동 여유'를 Porto에 적용. 그립 모델은 practice 빌드 기존값(alat 10.5, tight 6.5@κ>0.8, aacc 4.5, abrk 7) 유지 — 결승 빌드의 곡률연속 그립(lin 9.2)은 빌드가 달라 적용하지 않음(Porto 최대 곡률 0.74라 tight 구간 없음).",
+ "baseline": {"line": "maps/porto_mt_best.csv", "est_lap": 5.35, "real_flying": 5.66, "gen": "mintime --margin 0.35 --zm 0.45 --zones 26:4"},
+ "gen_common": "mintime.py maps/porto_mpc_best.csv maps/porto_map.npz OUT --step 0.1 --wdk 0.3 --alat 10.5 --margin M --mg_vk 0.015 --mg_max M+0.07 --mg_v0 4 --vref_line <baseline 재현 라인> [--zm Z --zones 26:4]; raceline.py maps/porto_center.csv LINE --from_line OUT --resmooth 0 --alat 10.5 --alat_tight 6.5 --k_tight 0.8 --aacc 4.5 --abrk 7 --vmax 15",
+ "candidates": [
+  {"line": "maps/porto_cand/porto_m025_z040.csv", "margin": 0.25, "mg_max": 0.32, "start_zone": 0.40, "est_lap": 5.28, "risk": "낮음"},
+  {"line": "maps/porto_cand/porto_m020_z040.csv", "margin": 0.20, "mg_max": 0.27, "start_zone": 0.40, "est_lap": 5.25, "risk": "중간"},
+  {"line": "maps/porto_cand/porto_m0175.csv", "margin": 0.175, "mg_max": 0.245, "start_zone": null, "est_lap": 5.18, "risk": "높음(출발 코너 여유 없음: 기존 충돌 원인 구간)"}
+ ],
+ "sweep_est": {"0.30/z0.45": 5.32, "0.30/z0.40": 5.31, "0.30/none": 5.29, "0.25/z0.45": 5.29, "0.25/z0.40": 5.28, "0.25/none": 5.24, "0.20/z0.45": 5.27, "0.20/z0.40": 5.25, "0.20/none": 5.20, "0.175/z0.45": 5.25, "0.175/z0.40": 5.24, "0.175/none": 5.18},
+ "how_to_test": "bash tools/run_porto.sh maps/porto_cand/porto_m025_z040.csv 11  (practice 시뮬 연결 상태). 충돌0이 3회 연속이면 race/tracks.json porto.line 교체"
+}

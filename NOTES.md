@@ -207,3 +207,17 @@ d. 결합: afcap2 + 헤어핀8.1 + 제동최적슬립(--smode 2 --sbrk 0.15, abr
 - 라인 재최적화(새 물리: 그립곡선 9.2/slope2.5, aacc6, abrk8.5, 속도연동여유, 2.5cm맵): est 7.60~7.67 (현 라인 7.67과 동일) → 라인 여지 없음
 - 낙관 상한(실측 최대치 동시: 헤어핀9.0·중간9.7·가속6.5·제동9, 여유0.175): est 7.34 / 헤어핀1g 균일 7.27. 실주행(6랩×2): 충돌 23·29회, 깨끗한 랩 0 → 주행 불가
 - 판단: 목표(헤어핀 1g, 실측 랩 ≤7.5) 현 차량물리·제어로 달성 불가. 실측 랩은 est보다 ~0.15~0.2s 느리므로 ≤7.5 실측엔 est ≤7.3 필요 = 모든 코너에서 실측 최대 그립을 무충돌로 써야 함
+
+## 2026-11-16 제출 패키지 / 미지 트랙 자동화 / Porto 후보 (시뮬 없는 환경에서 작업 — 실주행 검증 필요)
+1. 제출 패키지(race/): Dockerfile(베이스 autodrive_roboracer_api:2026-iros-compete, 브리지 무수정) + 엔트리포인트 autodrive_devkit.sh(브리지·실행기 감시/재기동) + race_launch.py
+   - 대회 모드 --comp 1(racer/localizer): Restricted 토픽 구독 없음, reset 발행 없음, 랩/타임아웃 종료 없음, pose 0.5s 끊기면 정지 명령. 스텁 시험 race/test_comp_topics.py 통과(실행기가 넘기는 인자 그대로)
+   - 트랙 판별: 첫 스캔 vs 각 맵 출발 pose(±0.2m) 레이캐스팅 예상거리, 빔 평균 차이. 가상 스캔: 정답 0.008~0.014 / 오답 0.146~0.15 / icra26 0.29~0.35(→explore). 처음엔 "스캔점-벽 거리"로 했으나 Porto·IROS 출발 직선이 비슷해 구분 실패 → 레이캐스팅 비교로 변경
+   - 실행기 재기동 시 logs/race_state.json 으로 이어감(재판별 안 함)
+   - MPC 지연: --mdelay_hz0 18 → 측정 주기가 18Hz에서 15% 이상 벗어나면 mdelay×(18·dt) (30Hz면 0.078s). 18Hz에선 기존과 동일
+2. 미지 트랙: explore.py(FTG + slam_lite 온라인 SLAM) → 루프 폐합+4m → auto_track.py stage A(5~8s) → 인계(/racer/init_pose → localizer --init_wait, racer가 /racer/active 발행하면 explore 종료) → stage B(mintime) 라인을 racer --reload 1로 주행 중 교체
+   - slam_lite: IMU yaw 고정, 위치만 CSM(우도격자는 누적합 대신 최댓값 갱신 — 누적합은 포화돼 미끄러짐), 이동량 벌점 prior 10(평행벽 직선의 종방향 미끄러짐 억제). 명시적 루프 폐합은 선명한 정합(점수≥0.7, 선명도≥0.15, 창 끝 아님)일 때만 — 직선에서 1~1.5m 오폐합이 났었음
+   - 가상 데이터(2m/s, 엔코더 실제 0.941): 위치오차 평균 4~7cm(엔코더 가정 0.97, 0.90에서도 ≤0.2m), 생성 중심선 vs 정답 평균 4~6cm, 벽 4cm
+   - build_track: SLAM 기록이면 궤적 2m 통로로 자유공간 제한 + 궤적 기반 중심선(양쪽 벽 중간으로 반복 이동, 감쇠/중간값 필터 — 없으면 지그재그 발산). 스켈레톤 갈래/열린 벽/경계 누출(ICRA26 실패 추정 원인)에 강함 — ICRA26 실데이터로 확인 필요
+   - 자동 라인 예상: IROS26 7.87(여유 그대로)/7.96(여유+0.025, 기본) vs 수동 7.67 — SLAM 맵 벽이 약간 두꺼워 트랙이 좁게 잡힘. Porto 5.39~5.40
+3. Porto 후보(results/porto_cand.json, maps/porto_cand/): 기존 절차 재현 5.35 확인 후 여유 축소+속도연동. 0.25/출발구간0.40 → 5.28, 0.20/0.40 → 5.25, 0.175/없음 → 5.18 (기존 5.35, 실측은 est+~0.3). practice 빌드라 기존 그립 모델 유지
+4. 실주행으로 확인할 것(우선순위): ① race/run_local.sh auto 로 Porto·IROS 판별/주행(레이스10 기존과 같은지, audit_topics.sh OK) ② TRACK=explore 로 IROS에서 매핑→인계→stage B 교체(인계 순간 충돌 여부, 매핑 랩 시간) ③ ICRA26에서 explore ④ tools/run_porto.sh 로 Porto 후보 3종 ⑤ docker build/실행
