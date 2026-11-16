@@ -150,7 +150,7 @@ In past leagues the competition track was released **2–5 days before the final
 | **D-2** | `bash tools/run_track.sh <name>` · `bash tools/ilc_iter.sh <name> 4` · `bash tools/run_track.sh <name> '' 11 --smode 3 --spred 2 --sacc 0.10 --scap 1.0` | 11-lap validation, per-segment speed learning, traction control |
 | **D-1** | `bash race/preflight.sh <TEAM>/<IMAGE>:<TAG>` | All offline tests for every configured track + Docker build → push |
 
-`race/test_new_track.py` rehearses D-3 offline on the IROS26 map. The whole pipeline takes about 8 s and produces a 7.77 s line, against 7.67 s for the line that was tuned by hand over several days.
+`race/test_new_track.py` rehearses D-3 offline on the IROS26 map. The whole pipeline takes about 8 s and produces a 7.69 s line, against 7.67 s for the line that was tuned by hand over several days. Getting this close required removing a wall bias: range noise scatters hits in front of each wall, so the map was drawing walls about 3 cm inside the track (`OCC_FRAC` in `build_track.py` peels those low-count surface cells).
 
 ## 🧪 Offline tests (no ROS, no simulator)
 

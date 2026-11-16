@@ -2,7 +2,7 @@
 """기록 npz -> 점유격자 맵 + 중심선/트랙폭 CSV.
 입력: ftg_record.py 기록(GT pose, 연습용) 또는 slam_lite/explore.py 기록(GT 없음, lap_end 포함 → 궤적 기반 중심선)
 usage: build_track.py <rec.npz> <out_prefix>   (출력: <prefix>_map.npz, <prefix>_center.csv, <prefix>_track.png)
-env: MAP_RES(기본 0.05), CORRIDOR(궤적 주변 통로 반폭, 기본 2.0m), TRAJ_CENTER=1(GT 기록도 궤적 기반 중심선)"""
+env: MAP_RES(기본 0.05), CORRIDOR(궤적 주변 통로 반폭, 기본 2.0m), TRAJ_CENTER=1(GT 기록도 궤적 기반 중심선), OCC_FRAC(>0: 주변 최대 관측 대비 비율 미만 셀 제거 — 노이즈로 벽이 두꺼워지는 편향 제거, 권장 0.3)"""
 import sys, numpy as np
 from scipy import ndimage
 from skimage.morphology import skeletonize
@@ -106,6 +106,8 @@ if __name__=='__main__':
     ix=((P[:,0]-ox)/RES).astype(int); iy=((P[:,1]-oy)/RES).astype(int)
     np.add.at(hits,(iy,ix),1)
     occ=hits>=max(2,int(round(3/_SC)))
+    OF=float(os.environ.get('OCC_FRAC','0'))
+
     occ=ndimage.binary_closing(occ,iterations=int(round(2*_SC)))|occ
     lab_o,no=ndimage.label(occ); sz=ndimage.sum(occ,lab_o,range(1,no+1))
     occ=np.isin(lab_o,1+np.where(sz>=60*_SC)[0]); print('occ components kept',(sz>=60*_SC).sum(),'of',no)
@@ -125,4 +127,9 @@ if __name__=='__main__':
         lab,_=ndimage.label(~occ_d&near)
     free=lab==lab[sy,sx]
     assert not (free[0].any() or free[-1].any() or free[:,0].any() or free[:,-1].any()), 'free space leaked to border'
+    if OF>0:   # 벽면 셀은 관측이 몰려 많고, 레인지 노이즈로 벽 앞 자유공간에 흩어진 셀은 적음 → 표면의 저관측 셀을 벗겨 벽이 안쪽으로 두꺼워지는 편향 제거
+        lm=ndimage.maximum_filter(hits,size=int(round(5*_SC))|1)   # (자유공간·통로 판정은 위에서 원래 벽으로 끝냄 → 저장 맵에만 반영)
+        for _ in range(2):   # 표면 셀 중 저관측 + 뒤에 내부 벽 셀이 받쳐줄 때만 제거 → 벽 두께 1셀 이상 유지(구멍 없음)
+            surf=occ&ndimage.binary_dilation(~occ); inner=ndimage.binary_erosion(occ)
+            occ=occ&~(surf&(hits<OF*lm)&ndimage.binary_dilation(inner))
     finish(occ,free,ox,oy,RES,sx,sy,d['yaw'][0],pre,start=[d['x'][0],d['y'][0],d['yaw'][0]],traj=traj)

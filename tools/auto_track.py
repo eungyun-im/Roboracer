@@ -46,8 +46,9 @@ def main():
     prof = ['--lin_a0', str(a.grip), '--lin_slope', str(a.grip_slope), '--lin_min', '6.5', '--aacc', '6.0', '--abrk', '8.5', '--drag', '0.273']
     line = pre + '_line.csv'
     if 'A' in a.stage:
-        sh([T('build_track.py'), a.rec, pre], env={'MAP_RES': '0.05'})
-        sh([T('build_track.py'), a.rec, pre + '_r025'], env={'MAP_RES': '0.025'})
+        of = os.environ.get('OCC_FRAC', '0.3')   # 레인지 노이즈로 벽이 안쪽으로 두꺼워지는 편향 제거(합성 시험: -2.8cm → -0.3cm)
+        sh([T('build_track.py'), a.rec, pre], env={'MAP_RES': '0.05', 'OCC_FRAC': of})
+        sh([T('build_track.py'), a.rec, pre + '_r025'], env={'MAP_RES': '0.025', 'OCC_FRAC': of})
         # 기준 라인: 최소곡률 + 고무줄 정제(맵 거리장으로 벽 여유 직접 제약) — iros26_mt_best line_gen과 같은 설정
         sh([T('raceline.py'), pre + '_center.csv', pre + '_ref.csv', '--alat', '10.5', '--alat_tight', '6.5', '--smooth', '6',
             '--margin', f'{0.35 + ma:.3f}', '--band_map', pre + '_map.npz'])
