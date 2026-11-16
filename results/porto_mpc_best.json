@@ -1,0 +1,46 @@
+{
+ "cfg": {
+  "ctrl": "mpc",
+  "margin": 0.35,
+  "smooth": 6,
+  "alat": 10.5,
+  "tight": 6.5,
+  "k_tight": 0.8,
+  "aacc": 4.5,
+  "abrk": 7,
+  "steer_ay": 8.5,
+  "steer_slip": 2.5,
+  "ld0": 0.9,
+  "ldk": 0.1,
+  "lat": 0.08,
+  "vlead": 0.15,
+  "gov_e0": 0.15,
+  "qy": 1,
+  "rd": 15,
+  "mdelay": 0.13,
+  "vff": 0.0,
+  "qpsi": 1.0,
+  "aff": 0.22,
+  "aff_neg": 0.0
+ },
+ "line": "maps/porto_mpc_best.csv",
+ "val10": {
+  "flying": 5.784,
+  "best": 5.716,
+  "coll": 0,
+  "laps": [
+   8.79,
+   5.83,
+   5.8,
+   5.73,
+   5.86,
+   5.75,
+   5.75,
+   5.72,
+   5.77,
+   5.83
+  ],
+  "total": 60.83
+ },
+ "note": "\uc18d\ub3c4FF: \uacc4\ud68d\uac00\uc18d\ub3c4 FF(\uac00\uc18d\uce21\ub9cc) aff0.22, vff0 (\uce21\uc815\uc18d\ub3c4 \ube44\uc758\uc874). \uc774\uc804 vff1: 5.985"
+}

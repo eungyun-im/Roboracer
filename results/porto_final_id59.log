@@ -1,0 +1,17 @@
+[37;1m2026-11-13 17:58:49.137 [31;1m[[37;1mXMLPARSER[31;1m Error] [37mrealpath failed No such file or directory[34;1m -> Function [36mloadDefaultXMLFile[m
+lap 1 time=infs coll_total=0 max_err=0.147
+lap 2 time=9.474s coll_total=0 max_err=0.119
+lap 3 time=6.643s coll_total=0 max_err=0.087
+lap 4 time=6.614s coll_total=0 max_err=0.094
+lap 5 time=6.625s coll_total=0 max_err=0.081
+lap 6 time=6.621s coll_total=1 max_err=0.821
+lap 7 time=7.305s coll_total=1 max_err=0.094
+lap 8 time=6.611s coll_total=1 max_err=0.093
+lap 9 time=6.615s coll_total=1 max_err=0.105
+lap 10 time=6.634s coll_total=1 max_err=0.111
+lap 11 time=6.639s coll_total=1 max_err=0.085
+RESULT {"vscale": 1.0, "ld0": 0.7, "ldk": 0.1, "lat": 0.08, "laps": [[1, Infinity, 0], [2, 9.474200248718262, 0], [3, 6.6427001953125, 0], [4, 6.613699913024902, 0], [5, 6.62470006942749, 0], [6, 6.620699882507324, 1], [7, 7.304699897766113, 1], [8, 6.6107001304626465, 1], [9, 6.614699840545654, 1], [10, 6.633699893951416, 1], [11, 6.638700008392334, 1]], "timed": [9.474200248718262, 6.6427001953125, 6.613699913024902, 6.62470006942749, 6.620699882507324, 7.304699897766113, 6.6107001304626465, 6.614699840545654, 6.633699893951416, 6.638700008392334], "total": 69.77850008010864, "coll": 1}
+loc err mean 0.088 max 0.419 | v_enc 5.37 v_gt 5.35 | res 0.000 reinit 1
+loc err mean 0.096 max 0.276 | v_enc 3.57 v_gt 3.52 | res 0.007 reinit 1
+loc err mean 0.095 max 0.320 | v_enc 5.77 v_gt 5.63 | res 0.002 reinit 1
+loc err mean 0.089 max 0.311 | v_enc 3.63 v_gt 3.60 | res 0.000 reinit 1

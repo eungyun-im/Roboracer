@@ -1,0 +1,56 @@
+{
+ "cfg": {
+  "ctrl": "mpc",
+  "margin": 0.35,
+  "smooth": 6,
+  "alat": 10.5,
+  "tight": 6.5,
+  "k_tight": 0.8,
+  "aacc": 4.5,
+  "abrk": 7,
+  "steer_ay": 8.5,
+  "steer_slip": 2.5,
+  "ld0": 0.9,
+  "ldk": 0.1,
+  "lat": 0.08,
+  "vlead": 0.15,
+  "gov_e0": 0.15,
+  "qy": 1,
+  "rd": 15,
+  "mdelay": 0.13,
+  "vff": 0.0,
+  "qpsi": 1.0,
+  "aff": 0.22,
+  "aff_neg": 0.0,
+  "vscale": 1.0,
+  "enc_scale": 0.941,
+  "qy_hi": 3,
+  "qy_v1": 5,
+  "qy_v2": 7,
+  "afcap": 2.0,
+  "smode": 2,
+  "sbrk": 0.15,
+  "kthr": 0.0396,
+  "rec_vmax": 4.0
+ },
+ "line": "maps/iros26_combo.csv",
+ "loc_args": "--vobs 1 --tele_r 2.0 --tele_dpen 0.05 --rec_time 3.0 (enc_scale 0.941)",
+ "line_gen": "profile_region.py maps/iros26_final.csv OUT --lin_a0 9.2 --lin_slope 2.5 --lin_min 6.5 --aacc 6.0 --abrk 8.5 --drag 0.273 (헤어핀 그립 ~8.1, 제동 8.5+drag)",
+ "val11": [
+  {
+   "race10": 78.9,
+   "coll_race": 0,
+   "coll_warmup": 1
+  },
+  {
+   "race10": 78.87,
+   "coll": 0
+  },
+  {
+   "race10": 80.77,
+   "coll_race": 1,
+   "coll_warmup": 1
+  }
+ ],
+ "robustness": "H2 25% 과속 유발: 8랩 랩당 1충돌, 매번 복귀(연쇄 없음)"
+}

@@ -1,0 +1,51 @@
+{
+ "cfg": {
+  "ctrl": "mpc",
+  "margin": 0.35,
+  "smooth": 6,
+  "alat": 10.5,
+  "tight": 6.5,
+  "k_tight": 0.8,
+  "aacc": 4.5,
+  "abrk": 7,
+  "steer_ay": 8.5,
+  "steer_slip": 2.5,
+  "ld0": 0.9,
+  "ldk": 0.1,
+  "lat": 0.08,
+  "vlead": 0.15,
+  "gov_e0": 0.15,
+  "qy": 1,
+  "rd": 15,
+  "mdelay": 0.13,
+  "vff": 0.0,
+  "qpsi": 1.0,
+  "aff": 0.22,
+  "aff_neg": 0.0
+ },
+ "line": "maps/porto_mt_best.csv",
+ "line_gen": "mintime.py maps/porto_mpc_best.csv maps/porto_map.npz OUT --step 0.1 --wdk 0.3 --alat 10.5 --margin 0.35 --zm 0.45 --zones 26:4 ; raceline.py maps/porto_center.csv OUT_p0 --from_line OUT --resmooth 0 --alat 10.5 --alat_tight 6.5 --k_tight 0.8 --aacc 4.5 --abrk 7 --vmax 15",
+ "val10": [
+  {
+   "flying": 5.655,
+   "coll": 0,
+   "total": 59.72
+  },
+  {
+   "flying": 5.654,
+   "coll": 0,
+   "total": 59.68
+  },
+  {
+   "flying": 5.667,
+   "coll": 0,
+   "total": 59.76
+  },
+  {
+   "flying": 5.66,
+   "coll": 0,
+   "total": 59.69
+  }
+ ],
+ "est_lap": 5.35
+}

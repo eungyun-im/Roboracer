@@ -1,0 +1,1 @@
+{"best": 5.955, "cfg": {"ctrl": "mpc", "margin": 0.35, "smooth": 6, "alat": 10.5, "tight": 6.5, "k_tight": 0.8, "aacc": 4.5, "abrk": 7, "steer_ay": 8.5, "steer_slip": 2.5, "ld0": 0.9, "ldk": 0.1, "lat": 0.08, "vlead": 0.15, "gov_e0": 0.15, "qy": 1, "rd": 15, "mdelay": 0.13, "vff": 1.0, "qpsi": 1.0}}

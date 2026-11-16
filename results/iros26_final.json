@@ -1,0 +1,57 @@
+{
+ "cfg": {
+  "ctrl": "mpc",
+  "margin": 0.35,
+  "smooth": 6,
+  "alat": 10.5,
+  "tight": 6.5,
+  "k_tight": 0.8,
+  "aacc": 4.5,
+  "abrk": 7,
+  "steer_ay": 8.5,
+  "steer_slip": 2.5,
+  "ld0": 0.9,
+  "ldk": 0.1,
+  "lat": 0.08,
+  "vlead": 0.15,
+  "gov_e0": 0.15,
+  "qy": 1,
+  "rd": 15,
+  "mdelay": 0.13,
+  "vff": 0.0,
+  "qpsi": 1.0,
+  "aff": 0.22,
+  "aff_neg": 0.0,
+  "vscale": 1.0,
+  "enc_scale": 0.941,
+  "qy_hi": 3,
+  "qy_v1": 5,
+  "qy_v2": 7
+ },
+ "line": "maps/iros26_final.csv",
+ "loc_map": "maps/iros26_map.npz (5cm, 위치추정용)",
+ "plan_map": "maps/r025/iros26_map.npz (2.5cm, 벽여유 계산용)",
+ "line_gen": "mintime.py maps/iros/ref_m0.35.csv maps/r025/iros26_map.npz OUT --step 0.1 --wdk 0.3 --margin 0.175 --mg_vk 0.015 --mg_max 0.22 --mg_v0 4 --vref_line maps/iros26_m0.175.csv --kmax 2.5 --lin_a0 9.2; raceline.py --from_line OUT --resmooth 0; profile_region.py --lin_a0 9.2",
+ "val11": [
+  {
+   "race10": 79.86,
+   "coll": 0
+  },
+  {
+   "race10": 79.87,
+   "coll": 0
+  },
+  {
+   "race10": 79.91,
+   "coll": 0
+  },
+  {
+   "race10": 79.9,
+   "coll": 0
+  },
+  {
+   "note": "1회 비정상 종료(충돌 242, 3랩 종료) 원인 불명 — 카운터 이상 의심, 로그 없음"
+  }
+ ],
+ "run": "run_race_test.sh (localizer --enc_scale 0.941, START 우선 재초기화)"
+}

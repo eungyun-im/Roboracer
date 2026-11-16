@@ -1,0 +1,16 @@
+lap 1 time=infs coll_total=0 max_err=0.164
+lap 2 time=7.652s coll_total=0 max_err=0.063
+lap 3 time=6.799s coll_total=0 max_err=0.070
+lap 4 time=6.784s coll_total=0 max_err=0.067
+lap 5 time=6.796s coll_total=0 max_err=0.067
+lap 6 time=6.786s coll_total=0 max_err=0.065
+lap 7 time=6.799s coll_total=0 max_err=0.068
+lap 8 time=6.796s coll_total=0 max_err=0.082
+lap 9 time=6.802s coll_total=0 max_err=0.072
+lap 10 time=6.796s coll_total=0 max_err=0.071
+lap 11 time=6.803s coll_total=0 max_err=0.057
+RESULT {"vscale": 1.0, "ld0": 0.5, "ldk": 0.15, "lat": 0.08, "laps": [[1, Infinity, 0], [2, 7.651599884033203, 0], [3, 6.798699855804443, 0], [4, 6.783699989318848, 0], [5, 6.7957000732421875, 0], [6, 6.785699844360352, 0], [7, 6.798699855804443, 0], [8, 6.7957000732421875, 0], [9, 6.801700115203857, 0], [10, 6.7957000732421875, 0], [11, 6.802700042724609, 0]], "timed": [7.651599884033203, 6.798699855804443, 6.783699989318848, 6.7957000732421875, 6.785699844360352, 6.798699855804443, 6.7957000732421875, 6.801700115203857, 6.7957000732421875, 6.802700042724609], "total": 68.80989980697632, "coll": 0}
+loc err mean 0.098 max 0.342 | v_enc 4.33 v_gt 4.66 | res 0.000 reinit 2
+loc err mean 0.070 max 0.314 | v_enc 2.97 v_gt 3.00 | res 0.000 reinit 2
+loc err mean 0.079 max 0.355 | v_enc 5.75 v_gt 6.36 | res 0.000 reinit 2
+loc err mean 0.078 max 0.202 | v_enc 3.03 v_gt 2.93 | res 0.000 reinit 2

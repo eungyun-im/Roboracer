@@ -1,0 +1,8 @@
+# setup.sh가 생성하는 로컬 산출물
+venv/
+build/
+install/
+log/
+sim/
+__pycache__/
+*.pyc
