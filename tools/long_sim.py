@@ -30,7 +30,7 @@ def run(line, ctrl, laps=3, cdelay=0.11, mdelay=0.055, hz=18.0, dt=0.002, k_mu=1
         i = int(s / ds) % len(S)
         vm = vh[0][1] if vh else 0.0
         vm = max(vm + rng.normal(0, v_noise), 0.0)
-        _, vref, _ = C.step(X[i], Y[i], PSI[i], vm, vm * K[i])
+        _, vref, _ = C.step(X[i], Y[i], PSI[i], vm, vm * K[i], t=t)
         theta = float(np.clip(vref * kthr, 0, 1)); q.append((t + cdelay, theta))
         if log: LOG.append((t, s, v, vref, u, V_plan(D, s)))
         for _ in range(nsub):

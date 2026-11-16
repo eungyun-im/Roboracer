@@ -193,12 +193,15 @@ Offline analysis of the IROS 2026 line (details in [NOTES.md](NOTES.md)):
 | braking 8.5 → 9.5 m/s² | −0.03 s |
 | +5 % grip in a single hairpin | −0.03 s |
 
-**Traction control (`--smode 3`).** In accelerating sections, the wheel-speed command is set to (car speed predicted 0.165 s ahead) × (1 + 15 % slip).
+**Predictive traction control (`--smode 3 --spred 2`).** The wheel speed for the next 0.165 s is already fixed by commands that were sent but have not taken effect yet. The controller therefore integrates those commands through the tire-slip model to predict the car's speed at the moment the new command takes effect. It then commands the wheel speed that gives the target slip at that moment: about 10 % when accelerating, and the optimal slip when braking. This is the same idea as the MPC's steering-delay compensation.
 
-- [`tools/long_sim.py`](tools/long_sim.py) is a 1-D longitudinal simulator. It reproduces the real laps to within 0.1 s.
-- In it, traction control gains **0.06–0.09 s per lap** without adding time at the cornering grip limit.
-- This holds across command-delay, friction, speed-noise and grip variations.
-- Try it on the race PC with `bash tools/run_tc_iros.sh`.
+| 1-D longitudinal sim ([`tools/long_sim.py`](tools/long_sim.py), reproduces real laps within 0.1 s) | lap | time at grip limit |
+|---|---|---|
+| current (`smode 2`) | 7.80 s | 4.65 % |
+| simple traction control (current speed + 6 m/s² × delay) | 7.72 s | 4.64 % |
+| **predictive traction + braking** (`spred 2`, slip 0.10) | **7.63 s** | **3.78 %** |
+
+The predictive version was also run with the delay, friction, measurement lag, speed noise, lateral grip and wheel gain each set wrong (10 conditions). In every one it was 0.16–0.20 s faster per lap than the current controller and spent less time at the grip limit. Try it on the race PC with `bash tools/run_tc_iros.sh`.
 
 ## 🗺️ Status and roadmap
 
@@ -208,7 +211,7 @@ Offline analysis of the IROS 2026 line (details in [NOTES.md](NOTES.md)):
 | Unseen-track pipeline | passes offline tests on synthetic data; needs a real-simulator run (including ICRA26) |
 | Porto line candidates (est. 5.18–5.28 s vs 5.35 s) | computed offline; needs track testing (`tools/run_porto.sh`) |
 | Per-segment speed tuning (`tools/ilc_iter.sh`) | mechanics verified offline; needs practice runs |
-| Traction control (`--smode 3`, `tools/run_tc_iros.sh`) | −0.06 to −0.09 s/lap predicted by the 1-D longitudinal model; needs track testing |
+| Predictive traction control (`--smode 3 --spred 2`, `tools/run_tc_iros.sh`) | −0.16 to −0.20 s/lap predicted by the 1-D longitudinal model; needs track testing |
 | LiDAR guard (`racer --guard 1`) | experimental, off by default |
 | Offline physics simulator (`tools/adsim.py`) | **not calibrated** yet; needs recorded bags to calibrate |
 

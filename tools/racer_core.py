@@ -2,26 +2,45 @@
 속도연동 lookahead Pure Pursuit + 지연 보상 + vlead 속도 + 속도별 조향 제한."""
 import numpy as np
 L=0.324; MAXSTEER=0.5236
-DEFAULTS=dict(vscale=1.0,ld0=0.5,ldk=0.15,ldmax=2.5,lat=0.08,vlead=0.25,steer_ay=7.5,steer_slip=3.0,gov_e0=0.0,gov_e1=0.4,gov_min=0.6,vff=0.0,aff=0.0,aff_neg=1.0,vm_kp=0.0,vm_blend=0.1,steer_abs=0.0,aff_lead=-1.0,cmode=0,ck=0.3,cdv=0.3,smode=0,sband=0.10,stau=0.15,sk=0.76,sbrk=0.15,sdb=0.3,aff_kmax=0.0,sacc=0.15,stau_a=0.165,apred=6.0,skmax=0.6,scap=1.0)
+DEFAULTS=dict(vscale=1.0,ld0=0.5,ldk=0.15,ldmax=2.5,lat=0.08,vlead=0.25,steer_ay=7.5,steer_slip=3.0,gov_e0=0.0,gov_e1=0.4,gov_min=0.6,vff=0.0,aff=0.0,aff_neg=1.0,vm_kp=0.0,vm_blend=0.1,steer_abs=0.0,aff_lead=-1.0,cmode=0,ck=0.3,cdv=0.3,smode=0,sband=0.10,stau=0.15,sk=0.76,sbrk=0.15,sdb=0.3,aff_kmax=0.0,sacc=0.15,stau_a=0.165,apred=6.0,skmax=0.6,scap=1.0,spred=0,vlag=0.055,uratio=0.97,kmu_p=1.1)
 class Controller:
     def __init__(s,line_csv,**kw):
         D=np.loadtxt(line_csv,delimiter=','); s.S,s.X,s.Y,s.V=D[:,0],D[:,1],D[:,2],D[:,5]; s.M=len(s.X); s.ds=s.S[1]-s.S[0]
         s.p=dict(DEFAULTS); s.p.update({k:v for k,v in kw.items() if v is not None}); s.idx=None
         s.A=s.V*np.gradient(s.V,s.S)   # 계획 가속도 v dv/ds
         s.K4=D[:,4]
-    def _traction(s,v,vref):
+    def _predict_v(s,v,t):
+        """명령 이력 기반 차속 예측(spred=1): 측정 v(=t-vlag 시점)에서 출발해, 이미 보낸 바퀴속도 명령(보낸 뒤 stau_a 후 반영)으로
+        종슬립 마찰곡선(tire_obs 와 동일, k_mu=kmu_p) + 공기저항을 적분 → 지금 보낼 명령이 반영되는 시점(t+stau_a)의 차속"""
+        from tire_obs import mu
+        p=s.p; H=getattr(s,'_uh',[]); tau=t-p['vlag']; te=t+p['stau_a']; vv=max(v,0.0); h=0.005
+        while tau<te-1e-9:
+            ta=tau-p['stau_a']; u=None
+            for (ts,uu) in H:   # ta 시점 이전에 보낸 마지막 명령
+                if ts<=ta: u=uu
+                else: break
+            if u is None: u=vv   # 이력 없음: 현재 속도 유지 가정
+            Sx=(u-vv)/max(vv,4.0); vv=max(vv+(9.81*np.sign(Sx)*mu(Sx)*p['kmu_p']-0.273*vv)*h,0.0); tau+=h
+        return vv
+    def _record_u(s,t,vref):
+        if s.p['spred']:
+            H=getattr(s,'_uh',[]); H.append((t,s.p['uratio']*vref)); s._uh=[x for x in H if x[0]>t-s.p['stau_a']-s.p['vlag']-0.3]
+    def _traction(s,v,vref,t=None):
         """smode 3 가속 트랙션 제어: 계획 가속 구간에서 바퀴속도 = (명령 반영 시점 예측 차속)×(1+sacc).
         스로틀=바퀴 표면속도이고 명령→바퀴 ~0.165s(3프레임) 지연이라, 현재 차속 기준 명령은 슬립이 작아(≈5%) 가속이 ~5 m/s²에 그침.
         타이어 최대 종마찰은 슬립 0.10~0.25(피크 0.15). 넘쳐도 점근 0.464g(≈현재 수준)이라 손해가 작음."""
         p=s.p; i=s.idx; A=float(s.A[i])
         if A<=0.3 or abs(float(s.K4[i]))>p['skmax']: return vref
-        vp=v+p['apred']*p['stau_a']
+        vp=s._predict_v(v,t) if (p['spred'] and t is not None) else v+p['apred']*p['stau_a']
         jv=(i+int(round(max(vp,0.5)*p['stau_a']/s.ds)))%s.M; vcap=p['vscale']*float(s.V[jv])   # 반영 시점 위치의 계획 속도
         if vp>=vcap: return vref
         ut=vp+p['sacc']*max(vp,4.0)
+        if p['spred']: ut=ut/p['uratio']   # 바퀴속도 → 명령(vref) 단위
         return max(vref,min(ut,vcap+p['scap']*p['sacc']*max(vcap,4.0)))   # scap=0: 계획 속도 이상으로는 바퀴속도를 올리지 않음(코너 진입 과속 방지)
     def reset(s): s.idx=None
-    def step(s,x,y,th,v,wz):
+    def step(s,x,y,th,v,wz,t=None):
+        import time as _tm
+        _t=_tm.time() if t is None else t
         p=s.p; X,Y,V,M,ds=s.X,s.Y,s.V,s.M,s.ds
         if p['lat']>0:
             x+=v*p['lat']*np.cos(th+wz*p['lat']/2); y+=v*p['lat']*np.sin(th+wz*p['lat']/2); th=th+wz*p['lat']
@@ -54,14 +73,15 @@ class Controller:
             elif v>1.0 and p['cmode']==2: vref=min(vref,max(v-p['cdv'],1.0))  # 트레일: 코너 안 약제동
         if p['smode'] in (2,3):   # 하이브리드: 가속은 기존 명령(3이면 트랙션 제어), 목표보다 빠르면(제동) 최적 슬립 제동
             A=float(s.A[s.idx]); vl=v+min(A,0.0)*p['stau']
-            if vref<vl-p['sdb']: vref=max(vref,vl-p['sbrk']*max(vl,4.0))
-            if p['smode']==3: vref=s._traction(v,vref)
+            if p['spred']>=2 and p['smode']==3: vl=s._predict_v(v,_t)   # 제동도 명령 이력 기반 예측 차속 기준 최적 슬립
+            if vref<vl-p['sdb']: vref=max(vref,(vl-p['sbrk']*max(vl,4.0))/(p['uratio'] if p['spred']>=2 and p['smode']==3 else 1.0))
+            if p['smode']==3: vref=s._traction(v,vref,_t)
             vref=max(vref,0.05)
         elif p['smode']>0:   # 슬립 제어: 명령 반영(~stau) 시점의 차속 예측, 그 대비 ±sband 슬립 안에서 바퀴속도 명령
             A=float(s.A[s.idx]); vl=v+(A*p['stau'] if (vref-v)*A>0 else 0.0)
             band=p['sband']*max(vl,4.0)
             vref=float(np.clip(vref+p['sk']*(vref-vl),vl-band,vl+band)); vref=max(vref,0.05)
-        s._cmd=vref
+        s._record_u(_t,vref); s._cmd=vref
         return delta,vref,err
 
 # ---------------- 지연·서보 모델 기반 선형 MPC ----------------
@@ -201,14 +221,15 @@ class MPCController(Controller):
             elif v>1.0 and p['cmode']==2: vref=min(vref,max(v-p['cdv'],1.0))  # 트레일: 코너 안 약제동
         if p['smode'] in (2,3):   # 하이브리드: 가속은 기존 명령(3이면 트랙션 제어), 목표보다 빠르면(제동) 최적 슬립 제동
             A=float(s.A[s.idx]); vl=v+min(A,0.0)*p['stau']
-            if vref<vl-p['sdb']: vref=max(vref,vl-p['sbrk']*max(vl,4.0))
-            if p['smode']==3: vref=s._traction(v,vref)
+            if p['spred']>=2 and p['smode']==3: vl=s._predict_v(v,t)   # 제동도 명령 이력 기반 예측 차속 기준 최적 슬립
+            if vref<vl-p['sdb']: vref=max(vref,(vl-p['sbrk']*max(vl,4.0))/(p['uratio'] if p['spred']>=2 and p['smode']==3 else 1.0))
+            if p['smode']==3: vref=s._traction(v,vref,t)
             vref=max(vref,0.05)
         elif p['smode']>0:   # 슬립 제어: 명령 반영(~stau) 시점의 차속 예측, 그 대비 ±sband 슬립 안에서 바퀴속도 명령
             A=float(s.A[s.idx]); vl=v+(A*p['stau'] if (vref-v)*A>0 else 0.0)
             band=p['sband']*max(vl,4.0)
             vref=float(np.clip(vref+p['sk']*(vref-vl),vl-band,vl+band)); vref=max(vref,0.05)
-        s._cmd=vref
+        s._record_u(t,vref); s._cmd=vref
         return delta,vref,err
 
 # ---------------- LiDAR 직접 안전층(Guard) ----------------
