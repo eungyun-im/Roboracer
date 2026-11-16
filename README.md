@@ -25,9 +25,12 @@
 
 - **Runs on allowed sensors only.** At race time the stack never reads the simulator's ground truth (`/odom`, `/ips`, `/tf`) or the lap and collision topics. Position comes from IMU yaw, wheel encoders (through a tire-slip observer) and LiDAR scan matching.
 - **Physics-aware planning.** Racing lines are solved as minimum-time problems with grip that depends on curvature, a wall margin that grows with speed, and a 2.5 cm planning map. The parameters come from measurements in the simulator.
-- **Delay-aware MPC.** A linear MPC in Frenet coordinates models the command delay and the steering servo. It solves in about 1.5 ms with OSQP (horizon 15) and feeds forward the planned acceleration. Braking holds the tire near its peak slip.
+- **Delay-aware MPC.** A linear MPC in Frenet coordinates models the command delay and the steering servo. It solves in about 1.5 ms with OSQP (horizon 15) and feeds forward the planned acceleration.
+- **Predictive traction control.** Throttle commands reach the wheel about 0.165 s late. The controller predicts the car's speed at that moment from the commands already sent, then holds the tire near its peak slip both when accelerating and when braking. In a longitudinal model that reproduces the real laps, this is 0.16–0.44 s faster per lap.
 - **One command for race day.** A single Docker image identifies the track from the first LiDAR scan, starts the right configuration and restarts any node that crashes.
 - **Unseen tracks.** If the track is unknown, the car drives a follow-the-gap lap while building a map with its own SLAM (no ground truth). It then generates a racing line in about 5 seconds, hands control to the MPC, and swaps in a minimum-time line once that is ready.
+- **Race-week playbook.** When the competition track is released a few days before the race, one command maps it and produces a line within 0.02 s of a hand-tuned one (offline rehearsal).
+- **Data-driven tuning loop.** A recording script, a simulator calibration tool and per-segment speed learning turn each practice session into a better model and a faster line.
 
 ## 🏁 Results
 
@@ -47,7 +50,7 @@ All runs below are in the official simulator builds, with the car localizing its
 | Speed-linked wall margin, 2.5 cm planning map, speed-scheduled MPC weights | 79.9 s |
 | Optimal-slip braking, steering cap based on front-tire slip angle, collision-recovery safeguards | **78.9 s** |
 
-Every step is documented in [NOTES.md](NOTES.md) (in Korean).
+Every step is documented in [NOTES.md](NOTES.md) (in Korean). For the gap to the winning pace and what closes it, see [Where the remaining time is](#-where-the-remaining-time-is) and [Road to first place](#-road-to-first-place).
 
 ## 🧭 How it works
 
@@ -97,6 +100,7 @@ flowchart LR
 - **Delay compensation:** the commands already sent are replayed through a rate-limited servo model before the horizon starts, so the MPC plans from where the car will actually be.
 - **Weights:** the lateral-error weight is scheduled with speed, which reduces deviation at high speed without hurting the hairpins.
 - **Speed:** a feed-forward on the planned acceleration (it does not depend on the noisy speed estimate). Braking holds the wheel speed near the tire's peak slip.
+- **Predictive traction control** (`--smode 3 --spred 2`, opt-in until track-tested): the speed at command-application time is predicted by integrating the already-sent wheel-speed commands through the tire-slip model; see [Where the remaining time is](#-where-the-remaining-time-is).
 - **Steering cap:** steering is limited to the angle the path curvature needs plus a 2° allowance for front-tire slip.
 - **Frame-rate adaptation:** the command delay is scaled with the measured loop rate when it differs from 18 Hz.
 </details>
@@ -109,6 +113,7 @@ flowchart LR
 - **SLAM:** because the yaw is exact, the SLAM only estimates position. It matches each scan against a likelihood grid built so far, and a motion prior stops the pose from sliding along long straight corridors.
 - **Loop closure:** applied only when the match is sharp and unambiguous.
 - **Centerline:** extracted by repeatedly moving the driven trajectory toward the middle of the track. Unlike skeletonization, this handles open walls and side branches.
+- **Wall accuracy:** range noise scatters hits in front of each wall, which made walls about 3 cm too thick. Low-count surface cells backed by a solid wall are peeled off (`OCC_FRAC`), reducing the bias to 0.3 cm without opening holes.
 - **Line generation** repeats the hand-tuned IROS procedure automatically. Stage A has a line ready in about 5 s; stage B's minimum-time line replaces it while the car is racing.
 </details>
 
@@ -167,20 +172,25 @@ ROS is replaced with a small stub, and LiDAR, encoder and IMU data are synthesiz
 | `python3 race/test_lines.py [line.csv …]` | Deployed and candidate lines are drivable: wall clearance, steering angle, steering rate, lateral and braking limits |
 | `python3 race/test_long_sim.py` | Longitudinal model reproduces real laps; traction control is faster without more time at the grip limit |
 | `python3 race/test_new_track.py` | D-3 playbook rehearsal: synthetic mapping record → lines → registration → localization |
+| `python3 race/test_adsim_fit.py` | Simulator calibration recovers known parameters and reproduces closed-loop behavior |
 
 ## 📂 Repository layout
 
 ```
-race/            competition package: Dockerfile, entrypoint, launcher, track config, tests
+race/            competition package: Dockerfile, entrypoint, launcher, track config, preflight, tests
 tools/
-  localizer.py   racer.py   racer_core.py      runtime: localization, MPC/pure pursuit, guard
-  raceline.py    mintime.py profile_region.py  planning: min-curvature, min-time, speed profiles
-  slam_lite.py   explore.py auto_track.py      unseen-track mapping and line generation
-  build_track.py                               occupancy map + centerline from a mapping record
-  ilc_profile.py ilc_iter.sh                   per-segment speed tuning from practice-run logs
-  adsim.py gymsim.py scan_sim.py               offline simulators and synthetic sensors
-maps/            occupancy maps, centerlines, racing lines (porto_cand/ = untested Porto candidates)
-results/         best configurations with validation runs
+  localizer.py   racer.py   racer_core.py       runtime: localization, MPC, traction control, guard
+  raceline.py    mintime.py profile_region.py   planning: min-curvature, min-time, speed profiles
+  slam_lite.py   explore.py auto_track.py       unseen-track mapping and line generation
+  build_track.py                                occupancy map + centerline from a mapping record
+  new_track.sh   track_add.py run_track.sh      race-week playbook: map, register and test any track
+  ilc_profile.py ilc_iter.sh                    per-segment speed tuning from practice-run logs
+  sysid_run.sh   adsim_fit.py                   record practice data, calibrate the simulator
+  adsim.py long_sim.py gymsim.py scan_sim.py    offline simulators and synthetic sensors
+  run_combo_iros.sh run_tc_iros.sh run_porto.sh test runs for the current best and the candidates
+maps/            occupancy maps, centerlines, racing lines
+                 (iros_cand/, porto_cand/ = candidates not yet track-tested)
+results/         best configurations with validation runs, candidate summaries
 docs/            vehicle physics derived from the simulator source, figures
 src/autodrive_devkit/   official devkit bridge (unmodified, per competition rules)
 ```
@@ -249,13 +259,14 @@ The remaining ~0.3 s has to come from cornering, and that requires a simulator t
 
 | Item | Status |
 |---|---|
-| Competition Docker image | written; needs a build-and-run check on the race PC |
+| Competition Docker image | written; needs a build-and-run check on the race PC (`race/preflight.sh`) |
+| Race-week playbook (`tools/new_track.sh` → `run_track.sh` / `ilc_iter.sh` → `race/preflight.sh`) | rehearsed offline (line within 0.02 s of hand-tuned); needs a dry run on the race PC |
 | Unseen-track pipeline | passes offline tests on synthetic data; needs a real-simulator run (including ICRA26) |
 | Porto line candidates (est. 5.18–5.28 s vs 5.35 s) | computed offline; needs track testing (`tools/run_porto.sh`) |
 | Per-segment speed tuning (`tools/ilc_iter.sh`) | mechanics verified offline; needs practice runs |
 | Predictive traction control + raised acceleration plan (`results/iros_tc_cand.json`) | −0.24 to −0.44 s/lap predicted by the 1-D longitudinal model; needs track testing (C1 → C2 → C3) |
 | LiDAR guard (`racer --guard 1`) | experimental, off by default |
-| Offline physics simulator (`tools/adsim.py`) | calibration tool ready and verified (`tools/adsim_fit.py`); waiting for `tools/sysid_run.sh` data |
+| Offline physics simulator (`tools/adsim.py`) | calibration tool ready and verified (`tools/adsim_fit.py`); **waiting for `tools/sysid_run.sh` data** — the next step toward first place |
 
 ---
 
