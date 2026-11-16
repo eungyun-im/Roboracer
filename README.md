@@ -152,6 +152,8 @@ ROS is replaced with a small stub, and LiDAR, encoder and IMU data are synthesiz
 | `python3 race/test_identify.py` | Porto and IROS26 are identified from the first scan; an unknown track falls back to `explore` |
 | `python3 race/test_localizer_offline.py [iros26\|porto]` | Localization from the start pose, and from a mid-lap handover pose |
 | `python3 race/test_explore_offline.py [map center]` | Exploration → SLAM → stage A + B → centerline compared with ground truth |
+| `python3 race/test_lines.py [line.csv …]` | Deployed and candidate lines are drivable: wall clearance, steering angle, steering rate, lateral and braking limits |
+| `python3 race/test_long_sim.py` | Longitudinal model reproduces real laps; traction control is faster without more time at the grip limit |
 
 ## 📂 Repository layout
 
@@ -176,6 +178,28 @@ src/autodrive_devkit/   official devkit bridge (unmodified, per competition rule
 - **No auto-start.** Nothing is started from `~/.bashrc`; the official bridge and simulator are not modified.
 - **Analysis-only tools.** Ground-truth checks and lap counting exist only in the test scripts, for analysis.
 
+## 🔬 Where the remaining time is
+
+Offline analysis of the IROS 2026 line (details in [NOTES.md](NOTES.md)):
+
+- **The line itself has converged.** Twenty minimum-time solves were run with drag included, starting from five different reference lines with four smoothing weights. All of them land at 7.65–7.68 s, against 7.67 s for the deployed line.
+- **Acceleration is the biggest lever.** Recomputing the planned profile with an acceleration limit of 5.0 m/s² instead of 6.0 reproduces the real laps on two independent lines: 7.89 s predicted vs 7.89 s real, and 7.98 s vs 7.99 s. So the car accelerates more weakly than planned.
+- **Why.** The throttle commands a wheel speed, and the command reaches the wheel about 0.165 s later. A command based on the current speed therefore produces only about 5 % slip, while the tire's friction peaks at about 15 %.
+
+| Change (lap time from the planned profile) | Δ per lap |
+|---|---|
+| acceleration 6.0 → 7.0 m/s² | −0.15 s |
+| global grip 9.2 → 9.6 m/s² | −0.11 s |
+| braking 8.5 → 9.5 m/s² | −0.03 s |
+| +5 % grip in a single hairpin | −0.03 s |
+
+**Traction control (`--smode 3`).** In accelerating sections, the wheel-speed command is set to (car speed predicted 0.165 s ahead) × (1 + 15 % slip).
+
+- [`tools/long_sim.py`](tools/long_sim.py) is a 1-D longitudinal simulator. It reproduces the real laps to within 0.1 s.
+- In it, traction control gains **0.06–0.09 s per lap** without adding time at the cornering grip limit.
+- This holds across command-delay, friction, speed-noise and grip variations.
+- Try it on the race PC with `bash tools/run_tc_iros.sh`.
+
 ## 🗺️ Status and roadmap
 
 | Item | Status |
@@ -184,6 +208,7 @@ src/autodrive_devkit/   official devkit bridge (unmodified, per competition rule
 | Unseen-track pipeline | passes offline tests on synthetic data; needs a real-simulator run (including ICRA26) |
 | Porto line candidates (est. 5.18–5.28 s vs 5.35 s) | computed offline; needs track testing (`tools/run_porto.sh`) |
 | Per-segment speed tuning (`tools/ilc_iter.sh`) | mechanics verified offline; needs practice runs |
+| Traction control (`--smode 3`, `tools/run_tc_iros.sh`) | −0.06 to −0.09 s/lap predicted by the 1-D longitudinal model; needs track testing |
 | LiDAR guard (`racer --guard 1`) | experimental, off by default |
 | Offline physics simulator (`tools/adsim.py`) | **not calibrated** yet; needs recorded bags to calibrate |
 

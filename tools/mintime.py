@@ -1,12 +1,12 @@
 #!/usr/bin/env python3
 """최소시간 레이싱라인 (casadi/ipopt). 기준 라인(최소곡률)의 법선 오프셋 n과 속도 v를 동시 최적화.
 제약: 벽 여유(맵 거리장), 마찰타원(가속 aacc/감속 abrk × 횡 alat(κ)), 곡률 상한 kmax. 목적: 랩타임 + 평활 정규화.
-usage: mintime.py <ref_line.csv> <map.npz> <out.csv> [--margin 0.35 --alat 10.5 --alat_t 6.5 --k_t 0.8 --aacc 4.5 --abrk 7 --kmax 0.85 --step 0.2 --lam 1e-3]"""
+usage: mintime.py <ref_line.csv> <map.npz> <out.csv> [--margin 0.35 --alat 10.5 --alat_t 6.5 --k_t 0.8 --aacc 4.5 --abrk 7 --kmax 0.85 --step 0.2 --lam 1e-3 --drag 0]"""
 import argparse, numpy as np, casadi as ca
 from scipy import ndimage
 from scipy.interpolate import splprep, splev
 ap=argparse.ArgumentParser(); ap.add_argument('ref'); ap.add_argument('map'); ap.add_argument('out')
-for k,v in dict(margin=0.35,alat=10.5,alat_t=6.5,k_t=0.8,aacc=4.5,abrk=7.0,vmax=15.0,kmax=0.85,step=0.2,lam=1e-3,nmax=1.5,wdk=0.0,fixn=0,zm=0.0,alat_c=0.0,k_c=0.884,lin_a0=0.0,lin_k0=0.6,lin_slope=4.0,lin_min=6.5,mg_v0=4.0,mg_vk=0.0,mg_max=0.3).items(): ap.add_argument('--'+k,type=float,default=v)
+for k,v in dict(margin=0.35,alat=10.5,alat_t=6.5,k_t=0.8,aacc=4.5,abrk=7.0,vmax=15.0,kmax=0.85,step=0.2,lam=1e-3,nmax=1.5,wdk=0.0,fixn=0,zm=0.0,alat_c=0.0,k_c=0.884,lin_a0=0.0,lin_k0=0.6,lin_slope=4.0,lin_min=6.5,mg_v0=4.0,mg_vk=0.0,mg_max=0.3,drag=0.0).items(): ap.add_argument('--'+k,type=float,default=v)
 ap.add_argument('--zones',default=''); ap.add_argument('--vref_line',default='')   # 속도연동 여유용 기준 속도 라인   # 's0:s1,s0:s1' 기준라인 s 구간에서 여유 zm 적용
 a=ap.parse_args()
 D=np.loadtxt(a.ref,delimiter=','); p=D[:,1:3]
@@ -54,7 +54,9 @@ if a.lin_a0>0:   # 곡률 연속 그립(코너 스윕 실측): softplus로 매�
     sp=0.02*ca.log(1+ca.exp((akap-a.lin_k0)/0.02)); alat=ca.fmax(a.lin_min,a.lin_a0-a.lin_slope*sp)
 ay=v**2*kap; axl=(vn**2-v**2)/(2*ds)
 axp=0.5*(axl+ca.sqrt(axl**2+1e-3)); axn=0.5*(-axl+ca.sqrt(axl**2+1e-3))
-g=ca.vertcat((axp/a.aacc)**2+(ay/alat)**2,(axn/a.abrk)**2+(ay/alat)**2,kap)
+ACC=a.aacc-a.drag*v if a.drag>0 else a.aacc; ACC=ca.fmax(ACC,0.3) if a.drag>0 else ACC   # 선형 공기저항: 가속 한계 aacc-drag·v, 제동 한계 abrk+drag·v (profile_region --drag 와 동일)
+BRK=a.abrk+a.drag*v if a.drag>0 else a.abrk
+g=ca.vertcat((axp/ACC)**2+(ay/alat)**2,(axn/BRK)**2+(ay/alat)**2,kap)
 lbg=np.r_[np.full(2*M,-np.inf),np.full(M,-a.kmax)]; ubg=np.r_[np.ones(2*M),np.full(M,a.kmax)]
 d2n=sh(n,1)-2*n+sh(n,-1)
 dk=sh(kap,1)-kap

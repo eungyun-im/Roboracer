@@ -20,5 +20,9 @@ jobs:
         run: python race/test_identify.py
       - name: Localizer (start + mid-lap handover)
         run: python race/test_localizer_offline.py iros26
+      - name: Racing lines are drivable (wall, steering, rate, accel limits)
+        run: python race/test_lines.py
+      - name: Longitudinal regression (traction control vs current)
+        run: python race/test_long_sim.py
       - name: Unseen track (explore -> SLAM -> racing line)
         run: python race/test_explore_offline.py
