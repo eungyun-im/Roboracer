@@ -227,6 +227,24 @@ The predictive version was also run with the delay, friction, measurement lag, s
 
 The sim runs 0.09 s faster than the real car, so C2 corresponds to roughly a 75.3 s race-10 and C3 to roughly 74.5 s. For comparison, 3rd place at IROS 2026 was 73.97 s.
 
+## 🏆 Road to first place
+
+At IROS 2026 the winning pace was 7.16 s per lap. Rebuilding the minimum-time line step by step shows what that pace demands:
+
+| Step | Lap | Status |
+|---|---|---|
+| today (real) | 7.89 s | ✅ |
+| predictive traction control + accel plan 7.0 (C2–C3) | ≈ 7.45–7.53 s | code ready, needs track test |
+| ~1 g cornering in every corner, including hairpins | **7.16 s** | needs a calibrated lateral model → **data** |
+
+The remaining ~0.3 s has to come from cornering, and that requires a simulator that matches the car's lateral response. The calibration loop is ready:
+
+1. **Record on the race PC.** `bash tools/sysid_run.sh` (≈ 10 min) records commands, actuator feedback, ground-truth odometry, IMU and encoders. It drives 11 laps with the current settings, grip sweeps that push to the limit, and the C2 candidate.
+2. **Calibrate.** `python3 tools/adsim_fit.py data/sysid_*.npz fit.json` fits the steering servo, the throttle delay, tire friction, understeer, yaw lag and the grip limits.
+   - The steering delay cannot be told apart within one frame from the servo feedback alone (18 Hz), so it is fitted jointly with the yaw response. The throttle delay is fitted jointly with the speed.
+   - `race/test_adsim_fit.py` checks the fitter on synthetic data with known parameters. It recovers them (delays ±5 ms, understeer, grip, friction) and the calibrated simulator reproduces the original closed-loop behavior.
+3. **Develop and validate offline.** Cornering control (a dynamic, slip-aware MPC and per-corner grip) is then built and checked in `tools/adsim.py --sim_file fit.json` before the next PC session.
+
 ## 🗺️ Status and roadmap
 
 | Item | Status |
@@ -237,7 +255,7 @@ The sim runs 0.09 s faster than the real car, so C2 corresponds to roughly a 75.
 | Per-segment speed tuning (`tools/ilc_iter.sh`) | mechanics verified offline; needs practice runs |
 | Predictive traction control + raised acceleration plan (`results/iros_tc_cand.json`) | −0.24 to −0.44 s/lap predicted by the 1-D longitudinal model; needs track testing (C1 → C2 → C3) |
 | LiDAR guard (`racer --guard 1`) | experimental, off by default |
-| Offline physics simulator (`tools/adsim.py`) | **not calibrated** yet; needs recorded bags to calibrate |
+| Offline physics simulator (`tools/adsim.py`) | calibration tool ready and verified (`tools/adsim_fit.py`); waiting for `tools/sysid_run.sh` data |
 
 ---
 

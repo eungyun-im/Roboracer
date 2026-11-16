@@ -22,7 +22,7 @@ from racer_core import Controller, MPCController, Guard, MPC_DEFAULTS
 G = 9.81; L = 0.324; LR = 0.155; LF = L - LR
 SIM = dict(model='pheno', K=0.007, tau_w=0.04, a0=9.8, a_k0=0.6, a_slope=2.7, a_min=7.0, slide=0.75, a_tot=10.0,
            kv=4.0, a_acc=5.3, a_brk=7.4, m=3.906, Iz=0.10, h=0.06, drag=0.273, adrag=0.1, k_mu=1.1, lat_scale=1.0, ugain=25.25 * 0.97,
-           srate=3.2, servo_asym=1, af_scale=1.0, ar_scale=1.0, delay=0.075, hz=18.0, dt=0.002,
+           srate=3.2, servo_asym=1, af_scale=1.0, ar_scale=1.0, delay=0.075, tdelay=None, hz=18.0, dt=0.002,
            n_lon=0.04, n_lat=0.015, n_rho=0.95, n_v=0.08, half_w=0.135, front=0.41, rear=-0.09,
            respawn_back=1.0, rec_time=3.0, seed=0, timeout=400.0)
 # 횡마찰 μ(α[deg]) 실측(앞바퀴, NOTES 2026-11-15 dyn_ident) — 0~0.6°는 t(2-t) 상승
@@ -69,7 +69,7 @@ class PhenoCar:
     def __init__(s, S, x, y, th):
         s.S = S; s.set(x, y, th)
     def set(s, x, y, th):
-        s.x, s.y, s.th = x, y, th; s.vx = 0.0; s.vy = 0.0; s.r = 0.0; s.d = 0.0; s.sliding = False
+        s.x, s.y, s.th = x, y, th; s.vx = 0.0; s.vy = 0.0; s.r = 0.0; s.d = 0.0; s.sliding = False; s.u = 0.0
     def pose(s): return s.x, s.y, s.th
     def step(s, dcmd, theta, h):
         S = s.S
@@ -84,6 +84,7 @@ class PhenoCar:
         s.r += (wt - s.r) * min(h / S['tau_w'], 1.0)
         ay = v * s.r
         u = S['ugain'] * theta if theta > 0 else 0.0   # θ=0: 바퀴 잠금
+        s.u = u
         Sx = (u - v) / max(v, 4.0)   # 종슬립 → 마찰곡선(tools/tire_obs.py와 동일, 실측 검증)
         ax = float(np.sign(Sx) * mu_lon(Sx) * S['k_mu'] * G) - S['drag'] * v
         amax_x = np.sqrt(max(S['a_tot'] ** 2 - ay ** 2, 1.0)); ax = float(np.clip(ax, -amax_x, amax_x))
@@ -167,12 +168,14 @@ def run(T, line_csv, laps=11, ctrl=None, sim=None, guard=None, log=False, verbos
             r = raycast(T['DF'], T['ox'], T['oy'], T['R'], x, y, th)[kb]; ok = np.isfinite(r) & (r < 9.5)
             Gd.set_scan(np.c_[LIDAR_X + r[ok] * np.cos(angb[ok]), r[ok] * np.sin(angb[ok])], t)
             delta, vref, _ = Gd.filter(vm, delta, vref, t)
-        theta = float(np.clip(vref * kthr, 0, 1)); q.append((t + S['delay'], delta * steer_cmd_scale, theta))
-        if log: LOG.append((t, x, y, th, v, car.vy, car.r, car.d, delta, vref, e, K.idx if K.idx is not None else -1, lap_cnt))
+        theta = float(np.clip(vref * kthr, 0, 1))
+        q.append((t + S['delay'], 'd', delta * steer_cmd_scale)); q.append((t + (S['delay'] if S['tdelay'] is None else S['tdelay']), 't', theta)); q.sort(key=lambda z: z[0])
+        if log: LOG.append((t, x, y, th, v, car.vy, car.r, car.d, delta, vref, e, K.idx if K.idx is not None else -1, lap_cnt, theta, getattr(car, 'u', 0.0)))
         # --- 물리 ---
         crashed = False
         for _ in range(nsub):
-            while q and q[0][0] <= t + 1e-9: _, dd, tt_ = q.pop(0); cmd = (dd, tt_)
+            while q and q[0][0] <= t + 1e-9:   # 조향/스로틀 명령은 각자의 지연 후 반영
+                _, kind, val = q.pop(0); cmd = (val, cmd[1]) if kind == 'd' else (cmd[0], val)
             car.step(cmd[0], cmd[1], h); t += h
         x, y, th = car.pose()
         ni = cidx(x, y, pi)
@@ -206,8 +209,9 @@ if __name__ == '__main__':
     import argparse, json
     ap = argparse.ArgumentParser(); ap.add_argument('--map', default='maps/iros26_map.npz'); ap.add_argument('--center', default='maps/iros26_center.csv')
     ap.add_argument('--line', default='maps/iros26_combo.csv'); ap.add_argument('--cfg', default='iros26'); ap.add_argument('--laps', type=int, default=11)
-    ap.add_argument('--sim', default='{}'); ap.add_argument('--ctrl', default='{}'); ap.add_argument('--guard', default=''); ap.add_argument('--seeds', default='0')
+    ap.add_argument('--sim', default='{}'); ap.add_argument('--sim_file', default=''); ap.add_argument('--ctrl', default='{}'); ap.add_argument('--guard', default=''); ap.add_argument('--seeds', default='0')
     a = ap.parse_args(); T = load_track(a.map, a.center)
+    if a.sim_file: a.sim = json.dumps(dict(json.load(open(a.sim_file)).get('sim', {}), **json.loads(a.sim)))   # adsim_fit.py 결과 적용
     for sd in map(int, a.seeds.split(',')):
         r = run(T, a.line, a.laps, ctrl=dict(CFG[a.cfg], **json.loads(a.ctrl)), sim=dict(json.loads(a.sim), seed=sd),
                 guard=(json.loads(a.guard) if a.guard else None))

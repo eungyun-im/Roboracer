@@ -258,3 +258,10 @@ d. 결합: afcap2 + 헤어핀8.1 + 제동최적슬립(--smode 2 --sbrk 0.15, abr
   - 기하 재최적화(mintime aacc7): est 7.49, +spred2 .15 → 7.359/4.92%(약간 위험↑)
   - 강건성 9조건: C1(.10) 8/9·C2(.15) 8/9 에서 그립한계 현재보다 낮음(예외: 실제 지연 0.22), C3 대부분 비슷하거나 약간 높음
   - 후보: maps/iros_cand/iros26_tc_a7.csv(C1/C2), iros26_tc_a7_reopt.csv(C3), results/iros_tc_cand.json. 실측 예상(+0.09): C2 7.53s/랩(레이스10 ~75.3), C3 ~74.5. 시험: run_tc_iros.sh 11 0.15 1.0 2 maps/iros_cand/iros26_tc_a7.csv (C1→C2→C3 순)
+
+## 2026-11-16 (계속) 1위(7.16)를 위한 데이터 루프: 시스템 식별 → 시뮬 보정
+- 남은 ~0.3s 는 코너링(전 코너 ~1g) → 횡방향 응답이 맞는 시뮬 필요 → 실측 데이터로 보정
+- tools/sysid_run.sh(PC, ~10분): ros2 bag(odom/imu/encoders/throttle·steering 명령/실제 throttle·steering/collision/lap/racer pose·odom, LiDAR 제외) + 주행(현재 11랩, 그립 스윕 lin_a0 9.2/9.6/10.0 각 4랩, C2 4랩) → bag2npz → data/sysid_<시각>.npz (git add -f 로 올리기)
+- tools/adsim_fit.py: [0] 조향 피드백 단위 자동판별 [1] 서보 속도(+지연/비대칭 후보 범위) [2] 스로틀→바퀴(이득, 지연 후보) [3] 종방향: 스로틀 명령으로 프레임 내 바퀴속도 재구성, 지연 후보×k_mu 피팅 [4] 횡방향: 조향 지연/비대칭 후보별 프레임 내 실제 조향 재구성 → K/tau_w/a0/a_slope/slide 피팅(요레이트). 강건 손실(상위5% 제외, soft_l1) — 충돌 재생성 구간 때문
+  - 교훈: 18Hz 샘플에선 한 프레임 안 지연들이 서보 피드백/엔코더만으론 구분 안 됨(오차 0 동률) → 요레이트/차속과 함께 맞춰야 식별. 가상 엔코더 중심차분은 미래값이 섞여 지연 과소추정 → 후방차분
+  - race/test_adsim_fit.py(CI, 28s): 정답(조향지연 .09, 스로틀 .15, srate 3, asym, K .008, tau .05, a0 9.6, slope 2, k_mu 1.1) → 추정 .095/.145/3.0/asym/.0091/.037/9.62/2.43/1.092. 폐루프(시드4): 정답 12.21s·충돌23·dev95 .28 vs 보정 11.56·29·.34 (가상 세계 자체 변동 범위 내)

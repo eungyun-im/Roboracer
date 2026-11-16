@@ -26,5 +26,7 @@ jobs:
         run: python race/test_long_sim.py
       - name: D-3 playbook rehearsal (GT record -> lines -> register -> localize)
         run: python race/test_new_track.py maps/r025/iros26_map.npz maps/iros26_center.csv 7.67
+      - name: Simulator calibration recovers known parameters
+        run: python race/test_adsim_fit.py
       - name: Unseen track (explore -> SLAM -> racing line)
         run: python race/test_explore_offline.py
