@@ -1,5 +1,5 @@
 {
-  "_doc": "대회 실행 설정. race_launch.py가 첫 LiDAR 스캔을 각 트랙 맵의 출발 pose에서 레이캐스팅한 예상 거리와 비교해 트랙을 고르고(빔 평균 거리차<id_thr m, 2위와 차이>id_gap), 맞는 트랙이 없으면 explore(미지 트랙: 워밍업 매핑→라인 자동 생성→주행). 경로는 작업공간 기준.",
+  "_doc": "대회 실행 설정. race_launch.py가 첫 LiDAR 스캔을 각 트랙 맵의 출발 pose에서 레이캐스팅한 예상 거리와 비교해 트랙을 고르고(빔 평균 거리차<id_thr m, 2위와 차이>id_gap), 맞는 트랙이 없으면 explore(미지 트랙: 워밍업 매핑→라인 자동 생성→주행). 경로는 작업공간 기준. 트랙별 plan_map(벽 여유 계산용 정밀 맵), profile(profile_region 속도 프로파일 인자: 구간 학습 등에서 사용). 새 트랙 등록: tools/track_add.py",
   "id_thr": 0.12,
   "id_gap": 0.04,
   "tracks": {
@@ -10,7 +10,9 @@
       "line": "maps/porto_mt_best.csv",
       "enc_scale": 0.97,
       "loc_args": "",
-      "racer_args": "--ctrl mpc --vscale 1.0 --steer_ay 8.5 --steer_slip 2.5 --vlead 0.15 --gov_e0 0.15 --mdelay 0.13 --qpsi 1.0 --vff 0 --aff 0.22 --aff_neg 0 --qy 1 --rd 15 --mdelay_hz0 18"
+      "racer_args": "--ctrl mpc --vscale 1.0 --steer_ay 8.5 --steer_slip 2.5 --vlead 0.15 --gov_e0 0.15 --mdelay 0.13 --qpsi 1.0 --vff 0 --aff 0.22 --aff_neg 0 --qy 1 --rd 15 --mdelay_hz0 18",
+      "plan_map": "maps/porto_map.npz",
+      "profile": "--alat 10.5 --alat_t 6.5 --k_t 0.8 --aacc 4.5 --abrk 7"
     },
     "iros26": {
       "note": "결승(compete 빌드, 새 물리). results/iros26_combo.json — 레이스10 ~78.9s",
@@ -19,7 +21,9 @@
       "line": "maps/iros26_combo.csv",
       "enc_scale": 0.941,
       "loc_args": "--vobs 1 --tele_r 2.0 --tele_dpen 0.05 --rec_time 3.0",
-      "racer_args": "--ctrl mpc --vscale 1.0 --steer_ay 8.5 --steer_slip 2.5 --vlead 0.15 --gov_e0 0.15 --mdelay 0.13 --qpsi 1.0 --vff 0 --aff 0.22 --aff_neg 0 --qy 1 --rd 15 --qy_hi 3 --afcap 2.0 --smode 2 --sbrk 0.15 --kthr 0.0396 --rec_vmax 4.0 --mdelay_hz0 18"
+      "racer_args": "--ctrl mpc --vscale 1.0 --steer_ay 8.5 --steer_slip 2.5 --vlead 0.15 --gov_e0 0.15 --mdelay 0.13 --qpsi 1.0 --vff 0 --aff 0.22 --aff_neg 0 --qy 1 --rd 15 --qy_hi 3 --afcap 2.0 --smode 2 --sbrk 0.15 --kthr 0.0396 --rec_vmax 4.0 --mdelay_hz0 18",
+      "plan_map": "maps/r025/iros26_map.npz",
+      "profile": "--lin_a0 9.2 --lin_slope 2.5 --lin_min 6.5 --aacc 6.0 --abrk 8.5 --drag 0.273"
     }
   },
   "explore": {

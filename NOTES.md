@@ -244,3 +244,13 @@ d. 결합: afcap2 + 헤어핀8.1 + 제동최적슬립(--smode 2 --sbrk 0.15, abr
   - 1D(cdelay .165): smode2 7.803/4.65% → spred1 sacc.10 scap1 7.615/5.03% → **spred2 sacc.10 scap1 7.631/3.78%**, spred2 sacc.15 scap1 7.597/4.06%. sbrk 0.10 은 빠르지만 그립한계↑(7~8%) → 0.15 유지
   - 강건성 10조건(실제 지연 .11/.22, k_mu 1.0/1.2, 속도노이즈 .15, 측정지연 0/.11, 횡그립-5%, 바퀴이득-3%): spred2 .10 이 모두 -0.16~-0.20s/랩 + 그립한계 시간 감소. 1D 오프셋(+0.09) 감안 실측 예상 ~7.72s/랩(레이스10 ~77.2)
   - PC: bash tools/run_tc_iros.sh (기본 spred 2, sacc 0.10, scap 1.0). 로그로 실제 가속(5.0→?) 확인
+
+## 2026-11-16 (계속) 대회 주간 플레이북
+- 과거 일정: 결승 트랙은 결승 2~5일 전 공개(ICRA25: 5/8 공개→5/10-11 결승, CDC25: 12/2→12/6-7). 공개는 compete 시뮬 빌드 → 그 트랙에서 매핑/튜닝 가능(연습 단계 GT 사용 가능, 런타임 금지)
+- D-3 tools/new_track.sh <name> [base] [speed]: steptest 리셋 → ftg_record(GT, 1.5m/s, 2랩) → TRAJ_CENTER=1 auto_track A+B(여유 그대로) → test_lines → track_add(tracks.json, base 트랙의 물리/제어 설정 복사, .bak 백업) → test_identify
+- D-2 tools/run_track.sh <track> [line] [laps] [racer args] (아무 트랙), tools/ilc_iter.sh <track> N (트랙 일반화, tracks.json profile/plan_map 사용)
+- D-1 race/preflight.sh [tag]: tracks.json 파일 확인 + 오프라인 시험 전부(트랙별 위치추정 포함) + docker build
+- build_track: GT 기록도 TRAJ_CENTER=1 이면 lap 카운터 첫 변화까지를 한 바퀴로 궤적 기반 중심선
+- tracks.json 에 plan_map/profile 필드(iros26: r025 + lin9.2/2.5/6.5/aacc6/abrk8.5/drag → 7.67 재현, porto: 5cm + alat10.5/6.5@0.8/aacc4.5/abrk7 → 5.35 재현). TRACKS_CFG env 로 다른 설정 파일 사용(시험용)
+- 리허설(race/test_new_track.py, 2.5cm 맵 가상 세계): 파이프라인 8s, est 7.77 (수동 7.67), 위치추정 출발/인계 OK. 5cm 맵을 가상 세계로 쓰면 7.84 — 5cm 맵이 벽을 안쪽으로 그려 트랙이 좁아짐(5cm≈0.2s와 일치)
+- scan_sim --start_xy: 맵 START에서 정확히 출발해 2m 동안 라인 합류(이전엔 라인 첫 점 출발이라 START와 0.3m 어긋나면 위치추정 시작 시험이 실패)

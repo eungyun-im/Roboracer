@@ -36,9 +36,14 @@ def main():
     ap.add_argument('--laps', type=float, default=1.3); ap.add_argument('--enc_true', type=float, default=0.941)
     ap.add_argument('--enc_noise', type=float, default=0.03); ap.add_argument('--rng_noise', type=float, default=0.01)
     ap.add_argument('--wobble', type=float, default=0.15); ap.add_argument('--seed', type=int, default=0)
+    ap.add_argument('--start_xy', default='')   # 'x,y': 이 위치에서 정확히 출발해 2m 동안 경로로 합류(실제 차는 맵 START에서 출발)
     a = ap.parse_args(); rng = np.random.default_rng(a.seed)
     D = np.loadtxt(a.path, delimiter=',')
     xy = D[:, 1:3] if D.shape[1] >= 6 else D[:, :2]
+    n0 = 0.0
+    if a.start_xy:
+        sx, sy = map(float, a.start_xy.split(',')); j = int(np.argmin((xy[:, 0] - sx) ** 2 + (xy[:, 1] - sy) ** 2)); xy = np.roll(xy, -j, axis=0)
+        tg = xy[1] - xy[0]; nv = np.array([-tg[1], tg[0]]) / np.hypot(*tg); n0 = float(np.dot([sx - xy[0, 0], sy - xy[0, 1]], nv))   # START의 경로 법선 방향 오프셋
     q = np.vstack([xy, xy[:1]]); tk, _ = splprep([q[:, 0], q[:, 1]], s=0, per=1)
     uu = np.linspace(0, 1, 5000, endpoint=False); PP = np.array(splev(uu, tk)).T
     L = np.sum(np.linalg.norm(np.diff(np.vstack([PP, PP[:1]]), axis=0), axis=1))
@@ -51,7 +56,7 @@ def main():
         dist += vcur * dt; s = dist / L % 1.0
         x, y = splev(s, tk); dx, dy = splev(s, tk, der=1)
         nx, ny = -dy, dx; nn = np.hypot(nx, ny)
-        off = a.wobble * np.sin(2 * np.pi * 3 * s)   # FTG처럼 중심선에서 약간 흔들리는 경로
+        off = a.wobble * np.sin(2 * np.pi * 3 * s) + n0 * max(0.0, 1.0 - dist / 2.0) ** 2   # FTG처럼 흔들림 + 출발 오프셋 합류
         x, y = float(x + off * nx / nn), float(y + off * ny / nn)
         yaw = float(np.arctan2(dy, dx))
         if prev is not None:

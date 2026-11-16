@@ -34,8 +34,9 @@ def main():
     name = sys.argv[1] if len(sys.argv) > 1 else 'iros26'
     cfg = RL.load_cfg(); t = cfg['tracks'][name]
     tmp = tempfile.mkdtemp(prefix='loc_test_'); sens = os.path.join(tmp, 'sens.npz')
+    st = np.load(os.path.join(WS, t['map']))['start']   # 실제처럼 맵 START 근처에서 출발
     subprocess.run([sys.executable, os.path.join(WS, 'tools/scan_sim.py'), os.path.join(WS, t['map']), os.path.join(WS, t['line']), sens,
-                    '--v', '3.0', '--laps', '1.0', '--wobble', '0.05', '--enc_true', str(t['enc_scale'])], check=True)
+                    '--v', '3.0', '--laps', '1.0', '--wobble', '0.05', '--enc_true', str(t['enc_scale']), '--start_xy', f'{st[0]},{st[1]}'], check=True)
     d = np.load(sens); ok = True
     e = run(t, d, 0); print(f'[start]    frames {len(e)}  err mean {e.mean():.3f} p95 {np.percentile(e, 95):.3f} max {e.max():.3f} m'); ok &= np.percentile(e, 95) < 0.15
     i0 = len(d['t']) // 2

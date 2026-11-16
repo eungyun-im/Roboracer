@@ -15,7 +15,7 @@ P = '/autodrive/roboracer_1/'
 
 
 def load_cfg():
-    return json.load(open(os.path.join(WS, 'race', 'tracks.json')))
+    return json.load(open(os.environ.get('TRACKS_CFG', os.path.join(WS, 'race', 'tracks.json'))))
 
 
 def identify(ranges, amin, ainc, yaw, cfg, win=0.2, step=0.05, verbose=True):

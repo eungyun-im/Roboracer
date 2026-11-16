@@ -9,14 +9,16 @@ from scipy import ndimage
 
 HERE = os.path.dirname(os.path.abspath(__file__)); WS = os.path.dirname(HERE)
 L = 0.324; SMAX = 0.5236; SRATE = 3.2
-PLAN_MAP = {'iros26': 'maps/r025/iros26_map.npz', 'porto': 'maps/porto_map.npz'}   # 벽 여유는 계획용(정밀) 맵 기준
+CFG = os.environ.get('TRACKS_CFG', os.path.join(WS, 'race', 'tracks.json'))
+PLAN_MAP = {n: t.get('plan_map', t['map']) for n, t in json.load(open(CFG))['tracks'].items()}   # 벽 여유는 계획용(정밀) 맵 기준
 LIM = dict(wall=0.15, ay=11.0, ax_acc=8.0, ax_brk=8.6, drag=0.273, vmax=15.0)   # 제동 한계 = 최적슬립 8.5 + 공기저항 0.273·v
 
 
 def track_of(path):
-    """경로 이름으로 트랙 판단, 모호하면 라인이 들어맞는(벽 최소거리가 큰) 맵 선택"""
-    if 'iros' in path: return 'iros26'
-    if 'porto' in path: return 'porto'
+    """경로에 트랙 이름이 있으면 그 트랙, 모호하면 라인이 들어맞는(벽 최소거리가 큰) 맵 선택"""
+    for n in sorted(PLAN_MAP, key=len, reverse=True):
+        if n in os.path.basename(path) or ('/' + n) in path: return n
+    if 'iros' in path and 'iros26' in PLAN_MAP: return 'iros26'
     D = np.loadtxt(path, delimiter=','); best = None
     for name, mf in PLAN_MAP.items():
         z = np.load(os.path.join(WS, mf)); ox, oy = z['origin']; R = float(z['res'])
@@ -61,7 +63,7 @@ def main():
     os.chdir(WS)
     if len(sys.argv) > 1: lines = sys.argv[1:]
     else:
-        cfg = json.load(open('race/tracks.json'))
+        cfg = json.load(open(CFG))
         lines = [t['line'] for t in cfg['tracks'].values()] + sorted(glob.glob('maps/porto_cand/*.csv')) + sorted(glob.glob('maps/iros_cand/*.csv'))
     bad = 0
     print(f'{"line":42s} {"est[s]":>7s} {"wall[m]":>8s} {"ay max":>7s} {"δ̇ max":>7s} {"v max":>6s}  result')

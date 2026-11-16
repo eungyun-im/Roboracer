@@ -2,7 +2,7 @@
 """기록 npz -> 점유격자 맵 + 중심선/트랙폭 CSV.
 입력: ftg_record.py 기록(GT pose, 연습용) 또는 slam_lite/explore.py 기록(GT 없음, lap_end 포함 → 궤적 기반 중심선)
 usage: build_track.py <rec.npz> <out_prefix>   (출력: <prefix>_map.npz, <prefix>_center.csv, <prefix>_track.png)
-env: MAP_RES(기본 0.05), CORRIDOR(SLAM 기록 시 궤적 주변 통로 반폭, 기본 2.0m)"""
+env: MAP_RES(기본 0.05), CORRIDOR(궤적 주변 통로 반폭, 기본 2.0m), TRAJ_CENTER=1(GT 기록도 궤적 기반 중심선)"""
 import sys, numpy as np
 from scipy import ndimage
 from skimage.morphology import skeletonize
@@ -113,8 +113,12 @@ if __name__=='__main__':
     lab,_=ndimage.label(~occ_d)
     sx,sy=int((d['x'][0]-ox)/RES),int((d['y'][0]-oy)/RES)
     traj=None
-    if 'lap_end' in d.files:   # SLAM 기록(GT 없음): 한 바퀴 궤적 주변 통로로 자유공간 제한(열린 벽/트랙 밖 누출 방지) + 궤적 기반 중심선
-        le=int(d['lap_end']); traj=np.c_[d['x'][:le],d['y'][:le]]
+    le=None
+    if 'lap_end' in d.files: le=int(d['lap_end'])
+    elif os.environ.get('TRAJ_CENTER')=='1' and 'lap' in d.files:   # GT 기록(ftg_record)도 궤적 기반: 랩 카운터가 처음 바뀌는 프레임까지 = 한 바퀴
+        ch=np.where(np.diff(d['lap'])!=0)[0]; le=int(ch[0])+1 if len(ch) else len(d['x'])
+    if le is not None:   # 한 바퀴 궤적 주변 통로로 자유공간 제한(열린 벽/트랙 밖 누출 방지) + 궤적 기반 중심선
+        traj=np.c_[d['x'][:le],d['y'][:le]]
         CORR=float(os.environ.get('CORRIDOR','2.0'))
         tm=np.ones((H,W),bool); tix=((traj[:,0]-ox)/RES).astype(int); tiy=((traj[:,1]-oy)/RES).astype(int); tm[tiy,tix]=False
         near=ndimage.distance_transform_edt(tm)*RES<CORR

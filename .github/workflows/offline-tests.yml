@@ -24,5 +24,7 @@ jobs:
         run: python race/test_lines.py
       - name: Longitudinal regression (traction control vs current)
         run: python race/test_long_sim.py
+      - name: D-3 playbook rehearsal (GT record -> lines -> register -> localize)
+        run: python race/test_new_track.py maps/r025/iros26_map.npz maps/iros26_center.csv 7.67
       - name: Unseen track (explore -> SLAM -> racing line)
         run: python race/test_explore_offline.py

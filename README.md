@@ -140,6 +140,18 @@ The entrypoint [`race/autodrive_devkit.sh`](race/autodrive_devkit.sh) starts the
 3. starts the localizer and the MPC in competition mode, or falls back to the unseen-track flow;
 4. restarts crashed nodes, and resumes the same track decision if it is restarted itself.
 
+## 📅 Race-week playbook
+
+In past leagues the competition track was released **2–5 days before the final race** (ICRA 2025: 2–3 days; CDC 2025: 4–5 days). The playbook turns that window into tuning time.
+
+| Day | Command | What it does |
+|---|---|---|
+| **D-3** (track released) | `bash tools/new_track.sh <name>` | Mapping lap (ground truth allowed in practice) → 5 cm + 2.5 cm maps → centerline → minimum-time line → line checks → registered in `race/tracks.json` → track-ID check |
+| **D-2** | `bash tools/run_track.sh <name>` · `bash tools/ilc_iter.sh <name> 4` · `bash tools/run_track.sh <name> '' 11 --smode 3 --spred 2 --sacc 0.10 --scap 1.0` | 11-lap validation, per-segment speed learning, traction control |
+| **D-1** | `bash race/preflight.sh <TEAM>/<IMAGE>:<TAG>` | All offline tests for every configured track + Docker build → push |
+
+`race/test_new_track.py` rehearses D-3 offline on the IROS26 map. The whole pipeline takes about 8 s and produces a 7.77 s line, against 7.67 s for the line that was tuned by hand over several days.
+
 ## 🧪 Offline tests (no ROS, no simulator)
 
 These also run on every push in [GitHub Actions](.github/workflows/offline-tests.yml).
@@ -154,6 +166,7 @@ ROS is replaced with a small stub, and LiDAR, encoder and IMU data are synthesiz
 | `python3 race/test_explore_offline.py [map center]` | Exploration → SLAM → stage A + B → centerline compared with ground truth |
 | `python3 race/test_lines.py [line.csv …]` | Deployed and candidate lines are drivable: wall clearance, steering angle, steering rate, lateral and braking limits |
 | `python3 race/test_long_sim.py` | Longitudinal model reproduces real laps; traction control is faster without more time at the grip limit |
+| `python3 race/test_new_track.py` | D-3 playbook rehearsal: synthetic mapping record → lines → registration → localization |
 
 ## 📂 Repository layout
 
