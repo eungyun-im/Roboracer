@@ -1,0 +1,24 @@
+name: offline-tests
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.10"
+      - name: Install dependencies
+        run: pip install numpy scipy osqp casadi scikit-image matplotlib
+      - name: Competition mode uses no restricted topics
+        run: python race/test_comp_topics.py
+      - name: Track identification from the first scan
+        run: python race/test_identify.py
+      - name: Localizer (start + mid-lap handover)
+        run: python race/test_localizer_offline.py iros26
+      - name: Unseen track (explore -> SLAM -> racing line)
+        run: python race/test_explore_offline.py

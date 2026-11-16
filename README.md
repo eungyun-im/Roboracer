@@ -1,62 +1,194 @@
-# roboracer_ws — AutoDRIVE RoboRacer Sim Racing 준비 작업공간
+<div align="center">
 
-어디에 두어도 동작(모든 스크립트가 자기 위치 기준). 상세 실험 기록과 다음 계획은 **NOTES.md**.
+# 🏎️ Roboracer
 
-## 새 컴퓨터 설치 (Ubuntu 22.04 + ROS 2 Humble 전제)
-```bash
-git clone https://github.com/eungyun-im/Roboracer.git && cd Roboracer   # 원하는 위치에
-./setup.sh --sims        # venv + 파이썬 의존성 + devkit 빌드 + 시뮬(연습 Porto, IROS26 결승) 다운로드
-source env.sh            # 매 터미널
-```
-setup.sh가 누락 시스템 패키지(apt)를 알려주면 직접 설치 후 다시 실행. 다른 시뮬: `bash tools/fetch_sims.sh icra26 cdctf25 explore`
+**An autonomous racing stack for the AutoDRIVE RoboRacer Sim Racing League**
 
-## 실행
-1. 브리지:  `ros2 launch autodrive_roboracer bringup_headless.launch.py`
-2. 시뮬:   `cd sim/c_2026-iros/autodrive_simulator && ./"AutoDRIVE Simulator.x86_64"` → 왼쪽 위 메뉴 → 연결(Disconnected) 클릭
-   (또는 `bash tools/sim_up.sh sim/c_2026-iros/autodrive_simulator` — xdotool로 자동 클릭, 화면 사용 중엔 쓰지 말 것)
-3. 데이터 확인: `python3 tools/rate.py` (≈18 Hz)
-4. 현재 최고 설정 주행(워밍업1+레이스10): `bash tools/run_combo_iros.sh`  → 레이스10 ≈ 78.9 s, 레이스 충돌 0 (이전 설정: `run_final_iros.sh` ≈ 79.9 s)
-5. Porto(예선) 시험: `bash tools/run_porto.sh [line.csv] [laps]` — 재최적화 후보는 `results/porto_cand.json` 참고
+*LiDAR + IMU + wheel-encoder localization · minimum-time racing lines · delay-aware MPC · GT-free mapping of unseen tracks*
 
-브리지가 멈추면(0 Hz, 포트 4567 점유): 브리지 프로세스 `kill -9` 후 1번 재실행 → 시뮬이 자동 재연결.
+[![ROS 2 Humble](https://img.shields.io/badge/ROS_2-Humble-22314E?logo=ros&logoColor=white)](https://docs.ros.org/en/humble/)
+[![Python 3.10](https://img.shields.io/badge/Python-3.10-3776AB?logo=python&logoColor=white)](https://www.python.org/)
+[![Docker](https://img.shields.io/badge/submission-Docker-2496ED?logo=docker&logoColor=white)](race/Dockerfile)
+[![Solvers](https://img.shields.io/badge/solvers-OSQP_·_CasADi%2FIPOPT-8A2BE2)](#-how-it-works)
+[![offline-tests](https://github.com/eungyun-im/Roboracer/actions/workflows/offline-tests.yml/badge.svg)](https://github.com/eungyun-im/Roboracer/actions/workflows/offline-tests.yml)
+[![Rules](https://img.shields.io/badge/runtime-no_ground_truth-3fb950)](#-rules-compliance)
 
-## 대회 제출 (race/)
-대회 모드(`--comp 1`)는 금지 토픽(/odom, /ips, /tf, lap_*, collision_count)을 구독하지 않고 reset 도 보내지 않으며, 랩 수/타임아웃으로 끝나지 않는다.
-```bash
-docker build -f race/Dockerfile -t <TEAM>/<IMAGE>:<TAG> .     # 베이스: autodrive_roboracer_api:2026-iros-compete (브리지 무수정)
-bash race/run_local.sh [auto|porto|iros26|explore]              # 도커 없이 같은 방식으로 로컬 실행 → 시뮬에서 연결 클릭
-bash race/audit_topics.sh                                       # (실행 중 다른 터미널) 우리 노드의 금지 토픽 사용 여부 점검
-```
-- 엔트리포인트 `race/autodrive_devkit.sh` = 공식 브리지 + `race/race_launch.py`. 컨테이너를 `--entrypoint /bin/bash` 로 띄웠다면 `/home/autodrive_devkit.sh` 를 직접 실행.
-- `race_launch.py`: 첫 LiDAR 스캔을 각 트랙 맵의 출발 pose에서 레이캐스팅한 예상 거리와 비교해 트랙 판별(`race/tracks.json`), 위치추정+주행 노드 기동·감시(죽으면 재기동). `TRACK=` 로 강제 가능.
-- 모르는 트랙이면 **explore**: `tools/explore.py`(FTG 탐색 주행 + `slam_lite.py` 온라인 SLAM, GT 없음) 한 바퀴 → `tools/auto_track.py` stage A(수 초: 맵·중심선·최소곡률 라인) → 위치추정/주행 인계 → stage B(최소시간 라인)가 나오면 주행 중 라인 교체(`racer --reload 1`).
-- MPC 명령 지연은 측정 주기가 18 Hz에서 15% 이상 벗어날 때만 프레임 수 비례로 조정(`--mdelay_hz0 18`, 18 Hz에서는 기존과 동일).
-- ROS/시뮬 없이 돌리는 시험(스텁 + 가상 LiDAR):
-  `python3 race/test_comp_topics.py`(금지 토픽) · `python3 race/test_identify.py`(트랙 판별) · `python3 race/test_localizer_offline.py [iros26|porto]`(위치추정/인계) · `python3 race/test_explore_offline.py [map center]`(탐색→매핑→라인)
+<img src="docs/img/racing_lines.png" alt="Racing lines on the IROS 2026 final track and the Porto qualifying track, colored by planned speed" width="100%">
 
-## 구조
-| 경로 | 내용 |
+[한국어 README](README.ko.md) · [Engineering log (NOTES.md)](NOTES.md) · [Vehicle physics notes](docs/ref_abdullah_VEHICLE_MODEL.md)
+
+</div>
+
+---
+
+## ✨ Highlights
+
+- **Runs on allowed sensors only.** At race time the stack never reads the simulator's ground truth (`/odom`, `/ips`, `/tf`) or the lap and collision topics. Position comes from IMU yaw, wheel encoders (through a tire-slip observer) and LiDAR scan matching.
+- **Physics-aware planning.** Racing lines are solved as minimum-time problems with grip that depends on curvature, a wall margin that grows with speed, and a 2.5 cm planning map. The parameters come from measurements in the simulator.
+- **Delay-aware MPC.** A linear MPC in Frenet coordinates models the command delay and the steering servo. It solves in about 1.5 ms with OSQP (horizon 15) and feeds forward the planned acceleration. Braking holds the tire near its peak slip.
+- **One command for race day.** A single Docker image identifies the track from the first LiDAR scan, starts the right configuration and restarts any node that crashes.
+- **Unseen tracks.** If the track is unknown, the car drives a follow-the-gap lap while building a map with its own SLAM (no ground truth). It then generates a racing line in about 5 seconds, hands control to the MPC, and swaps in a minimum-time line once that is ready.
+
+## 🏁 Results
+
+All runs below are in the official simulator builds, with the car localizing itself (no ground truth used).
+
+| Track | Configuration | Result | Official IROS 2026 reference |
+|---|---|---|---|
+| **IROS 2026 final** | [`results/iros26_combo.json`](results/iros26_combo.json) | **race-10 78.9 s** — 3 validation runs: 78.90 and 78.87 with 0 race collisions, 80.77 with 1 | 3rd place 73.97 s · 4th place 81.39 s |
+| **Porto qualifying** | [`results/porto_mt_best.json`](results/porto_mt_best.json) | **5.66 s flying lap**, 10 laps, 0 collisions, repeated 4× (≈ 56.6 s over 10 flying laps) | — |
+
+**How the IROS time came down**
+
+| Step | Race-10 |
 |---|---|
-| src/autodrive_devkit | 공식 devkit(브리지) — 수정 금지(대회 규칙) |
-| tools/localizer.py | 위치추정: IMU yaw + 엔코더(+타이어관측기 --vobs) + LiDAR CSM (GT 미사용) |
-| tools/racer.py, racer_core.py | 주행: MPC(지연/서보 모델, qy 속도스케줄), 속도 FF, 슬립 제어 옵션 |
-| tools/raceline.py, mintime.py, profile_region.py | 최소곡률/최소시간 라인, 곡률연속 그립·속도연동 벽여유, 구간 속도 배율 |
-| tools/build_track.py, map_track.sh | 매핑. ftg_record 기록(GT, 연습용) 또는 SLAM 기록(GT 없음: 궤적 기반 중심선 + 통로 마스크) |
-| tools/slam_lite.py, explore.py | GT 없는 매핑: IMU yaw + 엔코더 + LiDAR 스캔-맵 정합, 루프 폐합 / 탐색 주행 노드 |
-| tools/auto_track.py | 매핑 기록 → 맵(5cm·2.5cm) → 중심선 → 최소곡률/최소시간 라인 → 프로파일 (IROS26 수동 절차 자동화) |
-| tools/scan_sim.py | 오프라인 시험용 가상 LiDAR/엔코더(맵 레이캐스팅) |
-| tools/ilc_profile.py, ilc_iter.sh | 구간별 학습형 속도 보정(ILC): 연습 주행 로그로 구간 배율 자동 조정 → 새 라인. `bash tools/ilc_iter.sh 4` |
-| tools/adsim.py | AutoDRIVE 물리 재현 오프라인 시뮬 — **미보정**(실제보다 충돌 많음), 로직 동작 확인용. bag으로 보정 필요 |
-| racer --guard 1 | LiDAR 직접 안전층(실험적, 기본 꺼짐): 예측 차체가 벽과 겹치면 조향 최소 보정/감속. 로그에 개입률 출력 |
-| race/ | 제출 패키지: Dockerfile, 엔트리포인트, race_launch.py, tracks.json, 시험/감사 스크립트 |
-| tools/run_race_test.sh | 대회형 테스트(노드 선기동→리셋 즉시 출발), LOC_ARGS/ENC_SCALE/MAP/CENTER env |
-| tools/loc_offline.py, bag2npz.py, true_dev.py, sweep2_analyze.py ... | 오프라인 분석 도구 |
-| maps/ | 맵(*_map.npz), 중심선, 라인. 최종: iros26_combo.csv(결승), porto_mt_best.csv(예선), 계획용 2.5cm맵 r025/, Porto 후보 porto_cand/ |
-| results/ | 최적 설정 JSON (iros26_combo.json, porto_mt_best.json, porto_cand.json …) |
-| data/ | 매핑 원자료(*_ftg.npz), 분석용 bag 추출본(bag_*.npz) — **레포에 없음**(용량), 원본 PC에서 복사 필요. bags/, downloads/ 도 동일 |
-| docs/ | 참고: 시뮬 소스 기반 차량 물리 정리 |
-| third_party/f1tenth_gym | gym 보정용(선택) |
+| First transfer of the Porto settings | 91.5 s |
+| Minimum-time line with curvature-dependent grip | 85.2 s |
+| Speed-linked wall margin, 2.5 cm planning map, speed-scheduled MPC weights | 79.9 s |
+| Optimal-slip braking, steering cap based on front-tire slip angle, collision-recovery safeguards | **78.9 s** |
 
-## 규칙 주의
-런타임에 GT 토픽(/odom, /ips, /tf, lap/collision 등) 사용 금지. 제출 패키지는 `--comp 1` 로만 노드를 띄우므로 GT·lap·collision 토픽을 구독하지 않는다
-(`race/test_comp_topics.py` 로 확인). run_race_test.sh 의 --gt_check 덤프와 lap 토픽 집계는 분석/테스트 전용(대회 모드에선 비활성).
+Every step is documented in [NOTES.md](NOTES.md) (in Korean).
+
+## 🧭 How it works
+
+```mermaid
+flowchart LR
+    subgraph SIM["AutoDRIVE Simulator (Unity)"]
+        S[(LiDAR · IMU · encoders)]
+    end
+    B["Official devkit bridge<br/>(unmodified)"]
+    subgraph STACK["Our stack (race/race_launch.py)"]
+        ID{"Track ID<br/>first scan vs. maps"}
+        LOC["localizer.py<br/>IMU yaw + tire observer<br/>+ LiDAR CSM"]
+        MPC["racer.py<br/>delay-aware MPC<br/>+ speed profile"]
+        EXP["explore.py<br/>follow-the-gap + SLAM"]
+        AUTO["auto_track.py<br/>map → line (A: ~5 s, B: min-time)"]
+    end
+    S --> B --> ID
+    ID -- known track --> LOC --> MPC
+    ID -- unknown track --> EXP --> AUTO --> LOC
+    MPC -- throttle / steering --> B --> SIM
+```
+
+<details>
+<summary><b>Localization</b> — <code>tools/localizer.py</code></summary>
+
+- Heading comes straight from the IMU yaw, which is noise-free in the simulator. Speed comes from a tire observer: the encoders measure the wheel's surface speed, not the car's speed.
+- The dead-reckoned pose is corrected every scan by correlative scan matching on a precomputed distance field (search window ±0.25 m, 2.5 cm steps).
+- After a collision the simulator respawns the car at a checkpoint. The localizer detects this as a heading jump the gyro cannot explain, then re-initializes within 2 m and limits speed for 3 s while recovering.
+- Offline error: about 1.8 cm lateral and 5.9 cm longitudinal.
+</details>
+
+<details>
+<summary><b>Planning</b> — <code>tools/raceline.py</code>, <code>tools/mintime.py</code>, <code>tools/profile_region.py</code></summary>
+
+- **Reference line:** minimum curvature via OSQP, then an elastic-band refinement that keeps the wall margin directly on the distance field.
+- **Minimum-time line** (CasADi/IPOPT) optimizes the lateral offset and the speed together, subject to:
+  - a friction ellipse whose lateral grip is `alat(κ) = max(6.5, 9.2 − 2.5·(κ − 0.6)₊)`, measured with corner speed sweeps;
+  - a wall margin `0.175 m + 0.015 m per m/s` above 4 m/s;
+  - a curvature limit.
+- **Speed profile** includes linear aerodynamic drag (0.273·v) and per-region grip multipliers.
+</details>
+
+<details>
+<summary><b>Control</b> — <code>tools/racer_core.py</code></summary>
+
+- **Model:** linear MPC on the Frenet states `[e_y, e_ψ]`, linearized around the path's steering angle and including understeer.
+- **Delay compensation:** the commands already sent are replayed through a rate-limited servo model before the horizon starts, so the MPC plans from where the car will actually be.
+- **Weights:** the lateral-error weight is scheduled with speed, which reduces deviation at high speed without hurting the hairpins.
+- **Speed:** a feed-forward on the planned acceleration (it does not depend on the noisy speed estimate). Braking holds the wheel speed near the tire's peak slip.
+- **Steering cap:** steering is limited to the angle the path curvature needs plus a 2° allowance for front-tire slip.
+- **Frame-rate adaptation:** the command delay is scaled with the measured loop rate when it differs from 18 Hz.
+</details>
+
+<details>
+<summary><b>Unseen tracks</b> — <code>tools/slam_lite.py</code>, <code>tools/explore.py</code>, <code>tools/auto_track.py</code></summary>
+
+<img src="docs/img/auto_mapping.png" alt="GT-free mapping and automatic racing line on a synthetic IROS26 run" width="100%">
+
+- **SLAM:** because the yaw is exact, the SLAM only estimates position. It matches each scan against a likelihood grid built so far, and a motion prior stops the pose from sliding along long straight corridors.
+- **Loop closure:** applied only when the match is sharp and unambiguous.
+- **Centerline:** extracted by repeatedly moving the driven trajectory toward the middle of the track. Unlike skeletonization, this handles open walls and side branches.
+- **Line generation** repeats the hand-tuned IROS procedure automatically. Stage A has a line ready in about 5 s; stage B's minimum-time line replaces it while the car is racing.
+</details>
+
+## 🚀 Quick start
+
+```bash
+# Ubuntu 22.04 + ROS 2 Humble
+git clone https://github.com/eungyun-im/Roboracer.git && cd Roboracer
+./setup.sh --sims        # venv, Python deps, devkit build, simulator downloads
+source env.sh            # in every terminal
+
+ros2 launch autodrive_roboracer bringup_headless.launch.py               # 1. bridge
+bash tools/sim_up.sh sim/c_2026-iros/autodrive_simulator                 # 2. simulator (auto-clicks "connect")
+bash tools/run_combo_iros.sh                                             # 3. warm-up + 10 race laps, best config
+```
+
+## 🐳 Competition submission
+
+```bash
+docker build -f race/Dockerfile -t <TEAM>/<IMAGE>:<TAG> .   # based on autodrive_roboracer_api:2026-iros-compete
+bash race/run_local.sh [auto|porto|iros26|explore]          # same entrypoint without Docker
+bash race/audit_topics.sh                                   # while running: verify no restricted topics are used
+```
+
+The entrypoint [`race/autodrive_devkit.sh`](race/autodrive_devkit.sh) starts the **unmodified** official bridge together with [`race/race_launch.py`](race/race_launch.py), which:
+
+1. waits for the first LiDAR scan and IMU message;
+2. compares the scan with ray-cast predictions from each known map's start pose ([`race/tracks.json`](race/tracks.json));
+3. starts the localizer and the MPC in competition mode, or falls back to the unseen-track flow;
+4. restarts crashed nodes, and resumes the same track decision if it is restarted itself.
+
+## 🧪 Offline tests (no ROS, no simulator)
+
+These also run on every push in [GitHub Actions](.github/workflows/offline-tests.yml).
+
+ROS is replaced with a small stub, and LiDAR, encoder and IMU data are synthesized by ray casting the real maps.
+
+| Test | Checks |
+|---|---|
+| `python3 race/test_comp_topics.py` | Competition-mode nodes subscribe and publish no restricted topics |
+| `python3 race/test_identify.py` | Porto and IROS26 are identified from the first scan; an unknown track falls back to `explore` |
+| `python3 race/test_localizer_offline.py [iros26\|porto]` | Localization from the start pose, and from a mid-lap handover pose |
+| `python3 race/test_explore_offline.py [map center]` | Exploration → SLAM → stage A + B → centerline compared with ground truth |
+
+## 📂 Repository layout
+
+```
+race/            competition package: Dockerfile, entrypoint, launcher, track config, tests
+tools/
+  localizer.py   racer.py   racer_core.py      runtime: localization, MPC/pure pursuit, guard
+  raceline.py    mintime.py profile_region.py  planning: min-curvature, min-time, speed profiles
+  slam_lite.py   explore.py auto_track.py      unseen-track mapping and line generation
+  build_track.py                               occupancy map + centerline from a mapping record
+  ilc_profile.py ilc_iter.sh                   per-segment speed tuning from practice-run logs
+  adsim.py gymsim.py scan_sim.py               offline simulators and synthetic sensors
+maps/            occupancy maps, centerlines, racing lines (porto_cand/ = untested Porto candidates)
+results/         best configurations with validation runs
+docs/            vehicle physics derived from the simulator source, figures
+src/autodrive_devkit/   official devkit bridge (unmodified, per competition rules)
+```
+
+## ⚖️ Rules compliance
+
+- **Restricted topics.** In competition mode (`--comp 1`) the nodes never touch the restricted topics (`/odom`, `/ips`, `/tf`, `lap_*`, `collision_count`) and never publish `reset_command`. `race/test_comp_topics.py` verifies this using the exact arguments the launcher passes.
+- **No auto-start.** Nothing is started from `~/.bashrc`; the official bridge and simulator are not modified.
+- **Analysis-only tools.** Ground-truth checks and lap counting exist only in the test scripts, for analysis.
+
+## 🗺️ Status and roadmap
+
+| Item | Status |
+|---|---|
+| Competition Docker image | written; needs a build-and-run check on the race PC |
+| Unseen-track pipeline | passes offline tests on synthetic data; needs a real-simulator run (including ICRA26) |
+| Porto line candidates (est. 5.18–5.28 s vs 5.35 s) | computed offline; needs track testing (`tools/run_porto.sh`) |
+| Per-segment speed tuning (`tools/ilc_iter.sh`) | mechanics verified offline; needs practice runs |
+| LiDAR guard (`racer --guard 1`) | experimental, off by default |
+| Offline physics simulator (`tools/adsim.py`) | **not calibrated** yet; needs recorded bags to calibrate |
+
+---
+
+<div align="center">
+<sub>Built for the <a href="https://autodrive-ecosystem.github.io">AutoDRIVE</a> RoboRacer Sim Racing League. The simulator, the devkit and the RoboRacer platform belong to their respective owners.</sub>
+</div>
